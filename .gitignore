@@ -1,0 +1,85 @@
+# ==============================================================================
+# ubpftrace .gitignore
+# ==============================================================================
+
+# --- Build Directories & Output Binaries ---
+/build/
+/build-*/
+**/build/
+**/build-*/
+/bin/*
+!/bin/.gitkeep
+
+# Object, Static & Shared Library Artifacts
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.out
+*.ll
+*.bc
+*.d
+
+# --- CMake Output Files ---
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+CTestConfiguration.ini
+*.cmake.in
+
+# --- Generated Parser, Lexer & Source Headers ---
+src/parser.tab.cc
+src/parser.tab.hh
+src/location.hh
+src/position.hh
+src/stack.hh
+src/lex.yy.cc
+src/resources/headers.cpp
+src/resources/parser_resources.cpp
+
+# --- Embedded Subsystem Artifacts ---
+libbpf/src/libbpf.*
+libbpf/src/sharedobjs/
+libbpf/src/staticobjs/
+bpftime/build/
+bpftime/**/*.o
+bpftime/**/*.so
+bpftime/**/*.a
+
+# --- IDE & Editor Files ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.#*
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# --- Tooling & Language Server Caches ---
+.cache/
+.clangd/
+.ccls-cache/
+
+# --- Logs & Test Runtime Temporaries ---
+*.log
+.vmtest.log
+/dev/shm/bpftime_*
+
+# --- Nix & Environment Artifacts ---
+result
+result-*
+.direnv/

@@ -1,0 +1,26 @@
+struct Packet {
+    unsigned int magic;
+    unsigned int packet_id;
+    unsigned long size_bytes;
+    char *source_name;
+};
+
+uprobe:struct_app:process_packet {
+    $pkt = (struct Packet *)arg0;
+    printf("[ubpftrace] Intercepted Packet: id=%u, size=%u, src=%s, magic=0x%x\n",
+           $pkt->packet_id, $pkt->size_bytes, str($pkt->source_name), $pkt->magic);
+    
+    @bytes_total = sum($pkt->size_bytes);
+    @min_size = min($pkt->size_bytes);
+    @max_size = max($pkt->size_bytes);
+    @stats_size = stats($pkt->size_bytes);
+    @pkts_by_id[comm, $pkt->packet_id] = count();
+}
+
+uretprobe:struct_app:process_packet {
+    printf("[ubpftrace] process_packet return: status=%d\n", retval);
+}
+
+END {
+    printf("[ubpftrace] Packet processing finished!\n");
+}

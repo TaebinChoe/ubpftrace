@@ -1,0 +1,12 @@
+uprobe:calc:calculate {
+    printf("[ubpftrace] calculate called: a=%d, b=%d\n", arg0, arg1);
+    @calls = count();
+}
+
+uretprobe:calc:calculate {
+    printf("[ubpftrace] calculate returned: retval=%d\n", retval);
+}
+
+END {
+    printf("[ubpftrace] Tracing completed!\n");
+}

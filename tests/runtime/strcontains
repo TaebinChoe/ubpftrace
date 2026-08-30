@@ -1,0 +1,29 @@
+NAME path
+PROG fentry:security_file_open { if (strcontains(path(args.file.f_path, 128), "tmp")) { printf("OK\n"); exit(); } }
+EXPECT OK
+REQUIRES_FEATURE dpath
+AFTER TMPDIR=/tmp ./testprogs/syscall openat
+
+NAME no literals
+# Clamping is done to not blow verifier complexity limits
+PROG tracepoint:syscalls:sys_enter_execve / str(args.argv[0]) == "./testprogs/true" / { print(strcontains(str(args.argv[1], 32), str(args.argv[2], 32))); exit(); }
+AFTER ./testprogs/true zztest test
+EXPECT true
+TIMEOUT 1
+
+NAME string truncation does not affect matching
+PROG tracepoint:syscalls:sys_enter_execve / str(args.argv[0]) == "./testprogs/true" / { print(strcontains(str(args.argv[1], 6), str(args.argv[2], 4))); exit(); }
+AFTER ./testprogs/true zztest test
+EXPECT true
+
+# This test just ensures that the probe passes verification. There are no
+# guardrails here, if the read comes from proberead then we expect zero, but if
+# it points to BPF memory then it may be legitimate but random.
+NAME invalid indexing
+PROG begin { $a = "foo"; $i = (uint64)10; printf("the mystery letter is %c", $a[$i]); }
+EXPECT_REGEX the mystery letter is .*
+
+NAME types
+PROG BEGIN { strcontains("foo", 1) }
+EXPECT_REGEX .* ERROR:.*
+WILL_FAIL

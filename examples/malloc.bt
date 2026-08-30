@@ -1,0 +1,14 @@
+uprobe:libc:malloc {
+    printf("[ubpftrace] malloc called: size=%d bytes\n", arg0);
+    @alloc_bytes = sum(arg0);
+    @alloc_count = count();
+    @alloc_hist = hist(arg0);
+}
+
+uretprobe:libc:malloc {
+    printf("[ubpftrace] malloc returned: ptr=0x%lx\n", retval);
+}
+
+END {
+    printf("[ubpftrace] Allocation summary:\n");
+}

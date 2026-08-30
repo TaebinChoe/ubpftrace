@@ -1,0 +1,14 @@
+uprobe:libm:sin {
+    printf("[ubpftrace] libm:sin called by comm=%s (pid=%d)\n", comm, pid);
+    @sin_calls = count();
+    @calls_by_comm[comm] = count();
+}
+
+uprobe:libm:sqrt {
+    printf("[ubpftrace] libm:sqrt called by comm=%s (pid=%d)\n", comm, pid);
+    @sqrt_calls = count();
+}
+
+END {
+    printf("[ubpftrace] Math library tracing completed!\n");
+}

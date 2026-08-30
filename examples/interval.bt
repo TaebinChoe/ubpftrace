@@ -1,0 +1,7 @@
+i:ms:500 {
+    printf("[ubpftrace timer] Periodic tick! (elapsed: %d ms)\n", elapsed / 1000000);
+}
+
+uprobe:libc:puts {
+    printf("[ubpftrace uprobe] puts: %s\n", str(arg0));
+}

@@ -1,0 +1,8 @@
+uprobe:libc:puts {
+    printf("[ubpftrace] libc puts() intercepted: %s\n", str(arg0));
+    @puts_count = count();
+}
+
+END {
+    printf("[ubpftrace] Libc tracing finished!\n");
+}

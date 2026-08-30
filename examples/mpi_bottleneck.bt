@@ -1,0 +1,68 @@
+/*
+ * mpi_bottleneck.bt - HPC MPI Communication & Synchronization Bottleneck Tracer
+ *
+ * Tracks:
+ * 1. Barrier & Allreduce synchronization wait times (Load Imbalance / Straggler detection)
+ * 2. Point-to-Point message size distributions (Small vs. Large payload communication)
+ * 3. Total communication overhead vs. execution frequency
+ */
+
+// -------------------------------------------------------------
+// 1. Point-to-Point Operations (MPI_Send / MPI_Recv)
+// -------------------------------------------------------------
+
+uprobe:mpi:MPI_Send {
+    $count = arg1;
+    $dest = arg3;
+    printf("[ubpftrace MPI] MPI_Send(count=%u elements, dest_rank=%u)\n", $count, $dest);
+    @mpi_call_counts["MPI_Send"] = count();
+    @send_msg_elements_hist = hist($count);
+    @total_send_elements = sum($count);
+    @send_volume_by_dest[$dest] = sum($count);
+}
+
+uprobe:mpi:MPI_Recv {
+    $count = arg1;
+    $src = arg3;
+    printf("[ubpftrace MPI] MPI_Recv(max_count=%u elements, src_rank=%u)\n", $count, $src);
+    @mpi_call_counts["MPI_Recv"] = count();
+    @recv_msg_elements_hist = hist($count);
+    @total_recv_elements = sum($count);
+}
+
+// -------------------------------------------------------------
+// 2. Collective Synchronization & Reductions (MPI_Barrier / MPI_Allreduce)
+// -------------------------------------------------------------
+
+uprobe:mpi:MPI_Barrier {
+    @barrier_start[tid] = nsecs;
+    @mpi_call_counts["MPI_Barrier"] = count();
+}
+
+uretprobe:mpi:MPI_Barrier /@barrier_start[tid]/ {
+    $dur_us = (nsecs - @barrier_start[tid]) / 1000;
+    printf("[ubpftrace MPI] MPI_Barrier wait time: %u us\n", $dur_us);
+    @barrier_latency_us = hist($dur_us);
+    @barrier_stats_us = stats($dur_us);
+    @total_barrier_time_us = sum($dur_us);
+    _ = delete(@barrier_start, tid);
+}
+
+uprobe:mpi:MPI_Allreduce {
+    @allreduce_start[tid] = nsecs;
+    @mpi_call_counts["MPI_Allreduce"] = count();
+}
+
+uretprobe:mpi:MPI_Allreduce /@allreduce_start[tid]/ {
+    $dur_us = (nsecs - @allreduce_start[tid]) / 1000;
+    printf("[ubpftrace MPI] MPI_Allreduce latency: %u us\n", $dur_us);
+    @allreduce_latency_us = hist($dur_us);
+    @allreduce_stats_us = stats($dur_us);
+    _ = delete(@allreduce_start, tid);
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("  HPC MPI PERFORMANCE & BOTTLENECK SUMMARY\n");
+    printf("============================================================\n");
+}
