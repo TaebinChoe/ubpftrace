@@ -27,7 +27,7 @@ CMakeCache.txt
 CMakeFiles/
 CMakeScripts/
 Testing/
-Makefile
+/Makefile
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
@@ -46,7 +46,11 @@ src/resources/headers.cpp
 src/resources/parser_resources.cpp
 
 # --- Embedded Subsystem Artifacts ---
-libbpf/src/libbpf.*
+libbpf/src/*.a
+libbpf/src/*.so
+libbpf/src/*.so.*
+libbpf/src/libbpf.pc
+!libbpf/src/libbpf.pc.template
 libbpf/src/sharedobjs/
 libbpf/src/staticobjs/
 bpftime/build/
