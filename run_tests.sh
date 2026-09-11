@@ -43,7 +43,11 @@ echo ">>> [Test 5 Passed!] Struct decoding & multi-key maps verified."
 if [ -f "${APPS_DIR}/hpc_app" ]; then
     echo ""
     echo "[Test 6] Tracing HPC MPI Communication & Synchronization Bottlenecks..."
-    SPDLOG_LEVEL=error "${UBPFTRACE}" -c "${APPS_DIR}/hpc_app" "${SCRIPT_DIR}/examples/mpi_bottleneck.bt"
+    if command -v mpirun >/dev/null 2>&1; then
+        SPDLOG_LEVEL=error "${UBPFTRACE}" -c "mpirun --allow-run-as-root -np 2 ${APPS_DIR}/hpc_app" "${SCRIPT_DIR}/examples/mpi_bottleneck.bt"
+    else
+        echo "[Test 6 Skipped] mpirun not available."
+    fi
     echo ">>> [Test 6 Passed!] HPC MPI bottleneck tracking verified."
 else
     echo ""
