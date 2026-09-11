@@ -88,13 +88,14 @@ if(EXISTS "${BPFTOOL_DIR}/src/Makefile")
 else()
   ExternalProject_Add(bpftool
     PREFIX bpftool
+    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/bpftool_src
     GIT_REPOSITORY https://github.com/libbpf/bpftool.git
     GIT_TAG v7.4.0
     GIT_SUBMODULES_RECURSIVE TRUE
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND "mkdir" "-p" "${BPFTOOL_INSTALL_DIR}"
-    BUILD_COMMAND "make" "-C" "<SOURCE_DIR>/src" "EXTRA_CFLAGS=-g -O2 " "-j"
-    INSTALL_COMMAND "cp" "<SOURCE_DIR>/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
+    BUILD_COMMAND "make" "-C" "${CMAKE_CURRENT_BINARY_DIR}/bpftool_src/src" "EXTRA_CFLAGS=-g -O2 " "-j"
+    INSTALL_COMMAND "cp" "${CMAKE_CURRENT_BINARY_DIR}/bpftool_src/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
     INSTALL_BYPRODUCTS ${BPFTOOL_INSTALL_DIR}/bpftool
   )
 endif()
