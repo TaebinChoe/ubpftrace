@@ -90,6 +90,7 @@ include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 find_package(LibBcc REQUIRED)
 include_directories(SYSTEM ${LIBBCC_INCLUDE_DIRS})
 
+
 find_package(LibBpf REQUIRED)
 if(USE_SYSTEM_LIBBPF)
   include_directories(SYSTEM ${LIBBPF_INCLUDE_DIRS})
@@ -216,7 +217,20 @@ if(HAVE_DW_UNWIND)
   set(BPFTRACE_FLAGS "${BPFTRACE_FLAGS}" HAVE_DW_UNWIND)
 endif()
 
+set(BPFTIME_WARNINGS_AS_ERRORS OFF CACHE BOOL "Build bpftime with -Werror" FORCE)
+add_compile_options("-Wno-error=undef")
+add_subdirectory(bpftime)
 add_subdirectory(src)
+
+add_custom_target(ubpftrace_all_binaries ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/bin
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftrace> ${CMAKE_CURRENT_SOURCE_DIR}/bin/ubpftrace
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftime-agent> ${CMAKE_CURRENT_SOURCE_DIR}/bin/libbpftime-agent.so
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftime-syscall-server> ${CMAKE_CURRENT_SOURCE_DIR}/bin/libbpftime-syscall-server.so
+  COMMENT "Copying compiled binaries to bin/ directory"
+  DEPENDS bpftrace bpftime-agent bpftime-syscall-server
+)
+
 if (BUILD_TESTING)
   add_subdirectory(tests)
 endif()

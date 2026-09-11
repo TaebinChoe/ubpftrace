@@ -22,6 +22,8 @@ project(
   LANGUAGES C CXX
 )
 
+set(BPFTIME_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
 #
 # Set project options
 #
@@ -38,7 +40,7 @@ function(bpftime_add_static_lib_component_command target)
     if(CMAKE_AR_NAME STREQUAL "ar")
       list(APPEND CMDS
         COMMAND ${CMAKE_COMMAND} -E make_directory objs/${target}
-        COMMAND bash ${CMAKE_SOURCE_DIR}/cmake/extract_and_rename.sh $<TARGET_FILE:${target}> objs/${target}
+        COMMAND bash ${BPFTIME_SOURCE_DIR}/cmake/extract_and_rename.sh $<TARGET_FILE:${target}> objs/${target}
       )
       set(BPFTIME_STATIC_LIB_AR_CMDS ${BPFTIME_STATIC_LIB_AR_CMDS} ${CMDS} PARENT_SCOPE)
     else()
@@ -47,7 +49,7 @@ function(bpftime_add_static_lib_component_command target)
   else()
     list(APPEND CMDS
       COMMAND ${CMAKE_COMMAND} -E make_directory objs/${target}
-      COMMAND bash ${CMAKE_SOURCE_DIR}/cmake/extract_and_rename.sh $<TARGET_FILE:${target}> objs/${target}
+      COMMAND bash ${BPFTIME_SOURCE_DIR}/cmake/extract_and_rename.sh $<TARGET_FILE:${target}> objs/${target}
     )
     set(BPFTIME_STATIC_LIB_AR_CMDS ${BPFTIME_STATIC_LIB_AR_CMDS} ${CMDS} PARENT_SCOPE)
   endif()
@@ -64,7 +66,7 @@ function(bpftime_add_libs_component_command target_path)
     if(CMAKE_AR_NAME STREQUAL "ar")
       list(APPEND CMDS
         COMMAND ${CMAKE_COMMAND} -E make_directory objs/${target_name}
-        COMMAND ${CMAKE_COMMAND} -E env bash ${CMAKE_SOURCE_DIR}/cmake/extract_and_rename.sh ${target_path} ${CMAKE_BINARY_DIR}/objs/${target_name}
+        COMMAND ${CMAKE_COMMAND} -E env bash ${BPFTIME_SOURCE_DIR}/cmake/extract_and_rename.sh ${target_path} ${CMAKE_BINARY_DIR}/objs/${target_name}
       )
       set(BPFTIME_STATIC_LLVM_LIB_AR_CMDS ${BPFTIME_STATIC_LLVM_LIB_AR_CMDS} ${CMDS} PARENT_SCOPE)
     else()
@@ -73,7 +75,7 @@ function(bpftime_add_libs_component_command target_path)
   else()
     list(APPEND CMDS
       COMMAND ${CMAKE_COMMAND} -E make_directory objs/${target_name}
-      COMMAND ${CMAKE_COMMAND} -E env bash ${CMAKE_SOURCE_DIR}/cmake/extract_and_rename.sh ${target_path} ${CMAKE_BINARY_DIR}/objs/${target_name}
+      COMMAND ${CMAKE_COMMAND} -E env bash ${BPFTIME_SOURCE_DIR}/cmake/extract_and_rename.sh ${target_path} ${CMAKE_BINARY_DIR}/objs/${target_name}
     )
     set(BPFTIME_STATIC_LLVM_LIB_AR_CMDS ${BPFTIME_STATIC_LLVM_LIB_AR_CMDS} ${CMDS} PARENT_SCOPE)
   endif()

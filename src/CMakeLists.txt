@@ -15,7 +15,7 @@ add_library(compiler_core STATIC
   types.cpp
 )
 
-add_library(runtime STATIC
+add_library(ubpftrace_runtime STATIC
   async_action.cpp
   attached_probe.cpp
   bpffeature.cpp
@@ -58,7 +58,7 @@ add_executable(bpftrace
 
 # TODO: Honor `STATIC_LINKING` properly.
 if(LIBBLAZESYM_FOUND)
-  target_link_libraries(runtime ${LIBBLAZESYM_LIBRARIES})
+  target_link_libraries(ubpftrace_runtime ${LIBBLAZESYM_LIBRARIES})
 endif()
 
 install(TARGETS bpftrace DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -84,12 +84,12 @@ add_custom_target(version_h
     -Dbpftrace_SOURCE_DIR=${CMAKE_SOURCE_DIR}
     -P ${CMAKE_SOURCE_DIR}/cmake/Version.cmake
 )
-add_dependencies(runtime version_h)
+add_dependencies(ubpftrace_runtime version_h)
 add_dependencies(bpftrace version_h)
 add_dependencies(libbpftrace version_h)
 
 target_compile_definitions(required_resources PRIVATE ${BPFTRACE_FLAGS})
-target_compile_definitions(runtime PRIVATE ${BPFTRACE_FLAGS})
+target_compile_definitions(ubpftrace_runtime PRIVATE ${BPFTRACE_FLAGS})
 target_include_directories(libbpftrace PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(libbpftrace PRIVATE ${BPFTRACE_FLAGS})
 
@@ -100,9 +100,9 @@ target_link_options(bpftrace BEFORE PRIVATE
 )
 
 
-target_link_libraries(runtime debugfs output symbols tracefs util)
-target_link_libraries(runtime ${LIBBPF_LIBRARIES} ${ZLIB_LIBRARIES})
-target_link_libraries(libbpftrace "-Wl,--start-group" runtime symbols aot ast arch util cxxdemangler_llvm "-Wl,--end-group")
+target_link_libraries(ubpftrace_runtime debugfs output symbols tracefs util)
+target_link_libraries(ubpftrace_runtime ${LIBBPF_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBBCC_LIBRARIES})
+target_link_libraries(libbpftrace "-Wl,--start-group" ubpftrace_runtime symbols aot ast arch util cxxdemangler_llvm "-Wl,--end-group")
 
 if(LIBPCAP_FOUND)
   target_link_libraries(libbpftrace ${LIBPCAP_LIBRARIES})
@@ -112,57 +112,47 @@ if(HAVE_BFD_DISASM)
   if(STATIC_LINKING OR LIBBFD_STATIC)
     add_library(LIBBFD STATIC IMPORTED)
     set_property(TARGET LIBBFD PROPERTY IMPORTED_LOCATION ${LIBBFD_LIBRARIES})
-    target_link_libraries(runtime LIBBFD)
+    target_link_libraries(ubpftrace_runtime LIBBFD)
     add_library(LIBOPCODES STATIC IMPORTED)
     set_property(TARGET LIBOPCODES PROPERTY IMPORTED_LOCATION ${LIBOPCODES_LIBRARIES})
-    target_link_libraries(runtime LIBOPCODES)
+    target_link_libraries(ubpftrace_runtime LIBOPCODES)
     add_library(LIBIBERTY STATIC IMPORTED)
     set_property(TARGET LIBIBERTY PROPERTY IMPORTED_LOCATION ${LIBIBERTY_LIBRARIES})
-    target_link_libraries(runtime LIBIBERTY)
+    target_link_libraries(ubpftrace_runtime LIBIBERTY)
 
     add_library(LIBZSTD STATIC IMPORTED)
     if (LIBZSTD_LIBRARIES)
       set_property(TARGET LIBZSTD PROPERTY IMPORTED_LOCATION ${LIBZSTD_LIBRARIES})
-      target_link_libraries(runtime LIBZSTD)
+      target_link_libraries(ubpftrace_runtime LIBZSTD)
     endif(LIBZSTD_LIBRARIES)
 
     add_library(LIBSFRAME STATIC IMPORTED)
     if (LIBSFRAME_LIBRARIES)
       set_property(TARGET LIBSFRAME PROPERTY IMPORTED_LOCATION ${LIBSFRAME_LIBRARIES})
-      target_link_libraries(runtime LIBSFRAME)
+      target_link_libraries(ubpftrace_runtime LIBSFRAME)
     endif(LIBSFRAME_LIBRARIES)
   else()
-    target_link_libraries(runtime ${LIBBFD_LIBRARIES})
-    target_link_libraries(runtime ${LIBOPCODES_LIBRARIES})
+    target_link_libraries(ubpftrace_runtime ${LIBBFD_LIBRARIES})
+    target_link_libraries(ubpftrace_runtime ${LIBOPCODES_LIBRARIES})
     if (LIBZSTD_LIBRARIES)
-      target_link_libraries(runtime ${LIBZSTD_LIBRARIES})
+      target_link_libraries(ubpftrace_runtime ${LIBZSTD_LIBRARIES})
     endif(LIBZSTD_LIBRARIES)
   endif(STATIC_LINKING OR LIBBFD_STATIC)
 endif(HAVE_BFD_DISASM)
 
-# Link to bcc libraries (without LLVM) if possible
-if(LIBBCC_BPF_CONTAINS_RUNTIME)
-  target_link_libraries(runtime ${LIBBCC_BPF_LIBRARIES})
-else()
-  target_link_libraries(runtime ${LIBBCC_LIBRARIES})
-endif()
+target_link_libraries(ubpftrace_runtime ${LIBBPF_LIBRARIES})
 
 if(STATIC_LINKING)
-  # These are not part of the static libbcc so have to be added separate
-  target_link_libraries(runtime ${LIBBCC_BPF_LIBRARIES})
-  target_link_libraries(runtime ${LIBBPF_LIBRARIES})
-  target_link_libraries(runtime ${LIBBCC_LOADER_LIBRARY_STATIC})
-
   find_package(LibLzma)
   add_library(LIBLZMA STATIC IMPORTED)
   set_property(TARGET LIBLZMA PROPERTY IMPORTED_LOCATION ${LIBLZMA_LIBRARIES})
-  target_link_libraries(runtime LIBLZMA)
+  target_link_libraries(ubpftrace_runtime LIBLZMA)
 
   add_library(LIBELF STATIC IMPORTED)
   set_property(TARGET LIBELF PROPERTY IMPORTED_LOCATION ${LIBELF_LIBRARIES})
-  target_link_libraries(runtime LIBELF)
+  target_link_libraries(ubpftrace_runtime LIBELF)
 else()
-  target_link_libraries(runtime ${LIBELF_LIBRARIES})
+  target_link_libraries(ubpftrace_runtime ${LIBELF_LIBRARIES})
 endif(STATIC_LINKING)
 
 if (LIBDW_FOUND)
@@ -187,9 +177,9 @@ if (LIBDW_FOUND)
 
     target_link_libraries(LIBDW INTERFACE ${LIBDW_LIBS})
 
-    target_link_libraries(runtime LIBDW)
+    target_link_libraries(ubpftrace_runtime LIBDW)
   else()
-    target_link_libraries(runtime ${LIBDW_LIBRARIES})
+    target_link_libraries(ubpftrace_runtime ${LIBDW_LIBRARIES})
   endif()
 endif()
 
@@ -202,17 +192,17 @@ target_link_options(bpftrace PUBLIC $<$<BOOL:${BUILD_UBSAN}>:-fsanitize=undefine
 if (STATIC_LINKING)
   if(ANDROID)
     target_link_libraries(libbpftrace "-Wl,-Bdynamic" "-ldl" "-lm" "-lz")
-    target_link_libraries(runtime "-Wl,-Bdynamic" "-ldl" "-lm" "-lz")
+    target_link_libraries(ubpftrace_runtime "-Wl,-Bdynamic" "-ldl" "-lm" "-lz")
   else()
     target_link_libraries(libbpftrace "-Wl,-Bdynamic" "-lrt" "-lpthread" "-ldl" "-lm")
     target_link_libraries(libbpftrace "-Wl,-Bstatic" "-lz")
-    target_link_libraries(runtime "-Wl,-Bdynamic" "-lrt" "-lpthread" "-ldl" "-lm")
-    target_link_libraries(runtime "-Wl,-Bstatic" "-lz")
+    target_link_libraries(ubpftrace_runtime "-Wl,-Bdynamic" "-lrt" "-lpthread" "-ldl" "-lm")
+    target_link_libraries(ubpftrace_runtime "-Wl,-Bstatic" "-lz")
   endif()
 endif()
 
 if (ENABLE_SYSTEMD)
-  target_link_libraries(runtime PkgConfig::libsystemd)
+  target_link_libraries(ubpftrace_runtime PkgConfig::libsystemd)
 endif()
 
 unset(BPFTRACE)

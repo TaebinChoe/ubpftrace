@@ -61,30 +61,22 @@ sudo apt install -y \
 
 ## 📦 Building from Source (Copy & Paste)
 
-Clone and build the entire `ubpftrace` toolchain in one step:
+Clone and build the entire `ubpftrace` toolchain in one simple step:
 
 ```bash
 # 1. Clone and navigate to the repository
 git clone https://github.com/TaebinChoe/ubpftrace.git
 cd ubpftrace
 
-# 2. Build the embedded bpftime runtime subsystem
-cmake -B bpftime/build -S bpftime -DCMAKE_BUILD_TYPE=Release
-cmake --build bpftime/build -j$(nproc)
-
-# 3. Copy runtime libraries to bin/
-mkdir -p bin
-cp bpftime/build/runtime/agent/libbpftime-agent.so bin/
-cp bpftime/build/runtime/syscall-server/libbpftime-syscall-server.so bin/
-
-# 4. Build the ubpftrace frontend compiler
+# 2. Build everything (ubpftrace frontend + bpftime runtime agent) at once
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=OFF
 cmake --build build -j$(nproc)
-cp build/src/bpftrace bin/ubpftrace
-chmod +x bin/ubpftrace
 
-echo ">>> ubpftrace successfully built at bin/ubpftrace!"
+echo ">>> ubpftrace and libraries successfully built in bin/ !"
 ```
+
+All compiled binaries (`bin/ubpftrace`, `bin/libbpftime-agent.so`, `bin/libbpftime-syscall-server.so`) are generated automatically inside the `bin/` directory.
+
 
 Verify the installation:
 
