@@ -64,8 +64,9 @@ sudo apt install -y \
 Clone and build the entire `ubpftrace` toolchain in one step:
 
 ```bash
-# 1. Navigate to the repository
-cd /home/tchoe/Research/FGCS/ubpftrace
+# 1. Clone and navigate to the repository
+git clone https://github.com/TaebinChoe/ubpftrace.git
+cd ubpftrace
 
 # 2. Build the embedded bpftime runtime subsystem
 cmake -B bpftime/build -S bpftime -DCMAKE_BUILD_TYPE=Release
@@ -107,7 +108,7 @@ Trace dynamic memory allocations in `/bin/ls` without `sudo`:
 
 ## 🧪 Interactive Examples & Test Suite
 
-The repository includes ready-to-run test cases under the [`examples/`](file:///home/tchoe/Research/FGCS/ubpftrace/examples) directory.
+The repository includes ready-to-run test cases under the [`examples/`](examples) directory.
 
 ### Run All Integration Tests
 Execute the automated test suite verifying all 6 subsystems (compiles sample apps automatically):
