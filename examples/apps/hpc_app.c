@@ -48,8 +48,7 @@ int main(int argc, char **argv)
             }
         } else {
             // Self-exchange test for single process execution
-            MPI_Send(send_buf, 256, MPI_INT, 0, 0, MPI_COMM_WORLD);
-            MPI_Recv(recv_buf, 256, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Sendrecv(send_buf, 256, MPI_INT, 0, 0, recv_buf, 256, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
 
         // 2. Unbalanced Computation Phase (Straggler generation)
