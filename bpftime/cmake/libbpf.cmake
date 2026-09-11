@@ -91,6 +91,7 @@ else()
     GIT_REPOSITORY https://github.com/libbpf/bpftool.git
     GIT_TAG v7.4.0
     GIT_SUBMODULES_RECURSIVE TRUE
+    UPDATE_COMMAND ""
     CONFIGURE_COMMAND "mkdir" "-p" "${BPFTOOL_INSTALL_DIR}"
     BUILD_COMMAND "make" "EXTRA_CFLAGS=-g -O2 " "-j"
     INSTALL_COMMAND "cp" "<SOURCE_DIR>/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
