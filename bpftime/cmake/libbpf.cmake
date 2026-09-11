@@ -73,11 +73,18 @@ add_dependencies(libbpf_with_headers libbpf copy_headers)
 # # Setup bpftool
 set(BPFTOOL_DIR ${CMAKE_CURRENT_LIST_DIR}/../third_party/bpftool)
 set(BPFTOOL_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/bpftool)
+find_program(LLVM_STRIP_EXE NAMES llvm-strip llvm-strip-18 llvm-strip-17 llvm-strip-16 llvm-strip-15)
+if(LLVM_STRIP_EXE)
+  set(BPFTOOL_BUILD_CMD "make" "EXTRA_CFLAGS=-g -O2 " "LLVM_STRIP=${LLVM_STRIP_EXE}" "-j")
+else()
+  set(BPFTOOL_BUILD_CMD "make" "EXTRA_CFLAGS=-g -O2 " "-j")
+endif()
+
 ExternalProject_Add(bpftool
   PREFIX bpftool
   SOURCE_DIR ${BPFTOOL_DIR}/src
   CONFIGURE_COMMAND "mkdir" "-p" "${BPFTOOL_INSTALL_DIR}"
-  BUILD_COMMAND "make" "EXTRA_CFLAGS=-g -O2 " "-j"
+  BUILD_COMMAND ${BPFTOOL_BUILD_CMD}
   INSTALL_COMMAND "cp" "${BPFTOOL_DIR}/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
   BUILD_IN_SOURCE TRUE
   BUILD_BYPRODUCTS ${BPFTOOL_DIR}/src/bpftool
