@@ -74,7 +74,7 @@ add_dependencies(libbpf_with_headers libbpf copy_headers)
 set(BPFTOOL_DIR ${CMAKE_CURRENT_LIST_DIR}/../third_party/bpftool)
 set(BPFTOOL_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/bpftool)
 
-if(EXISTS "${BPFTOOL_DIR}/src")
+if(EXISTS "${BPFTOOL_DIR}/src/Makefile")
   ExternalProject_Add(bpftool
     PREFIX bpftool
     SOURCE_DIR ${BPFTOOL_DIR}/src
