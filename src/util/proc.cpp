@@ -186,10 +186,33 @@ int ChildProcImpl::childfn(void* arg)
   std::string agent_so;
   if (agent_env && access(agent_env, R_OK) == 0) {
     agent_so = agent_env;
-  } else if (access("/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-agent.so", R_OK) == 0) {
-    agent_so = "/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-agent.so";
-  } else if (access("/home/tchoe/.bpftime/libbpftime-agent.so", R_OK) == 0) {
-    agent_so = "/home/tchoe/.bpftime/libbpftime-agent.so";
+  } else {
+    char exe_path[1024] = {0};
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len > 0) {
+      std::filesystem::path bin_dir = std::filesystem::path(exe_path).parent_path();
+      std::filesystem::path c1 = bin_dir / "libbpftime-agent.so";
+      std::filesystem::path c2 = bin_dir / ".." / "bin" / "libbpftime-agent.so";
+      if (access(c1.c_str(), R_OK) == 0) {
+        agent_so = c1.string();
+      } else if (access(c2.c_str(), R_OK) == 0) {
+        agent_so = c2.string();
+      }
+    }
+    if (agent_so.empty()) {
+      const char *home = getenv("HOME");
+      if (home) {
+        std::string home_so = std::string(home) + "/.bpftime/libbpftime-agent.so";
+        if (access(home_so.c_str(), R_OK) == 0) {
+          agent_so = home_so;
+        }
+      }
+    }
+    if (agent_so.empty()) {
+      if (access("/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-agent.so", R_OK) == 0) {
+        agent_so = "/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-agent.so";
+      }
+    }
   }
   if (!agent_so.empty()) {
     const char *old_preload = getenv("LD_PRELOAD");

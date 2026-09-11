@@ -899,10 +899,33 @@ int main(int argc, char* argv[])
     const char *srv_env = getenv("UBPFTRACE_SYSCALL_SERVER_SO");
     if (srv_env && access(srv_env, R_OK) == 0) {
       srv_so = srv_env;
-    } else if (access("/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-syscall-server.so", R_OK) == 0) {
-      srv_so = "/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-syscall-server.so";
-    } else if (access("/home/tchoe/.bpftime/libbpftime-syscall-server.so", R_OK) == 0) {
-      srv_so = "/home/tchoe/.bpftime/libbpftime-syscall-server.so";
+    } else {
+      char exe_path[1024] = {0};
+      ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+      if (len > 0) {
+        std::filesystem::path bin_dir = std::filesystem::path(exe_path).parent_path();
+        std::filesystem::path c1 = bin_dir / "libbpftime-syscall-server.so";
+        std::filesystem::path c2 = bin_dir / ".." / "bin" / "libbpftime-syscall-server.so";
+        if (access(c1.c_str(), R_OK) == 0) {
+          srv_so = c1.string();
+        } else if (access(c2.c_str(), R_OK) == 0) {
+          srv_so = c2.string();
+        }
+      }
+      if (srv_so.empty()) {
+        const char *home = getenv("HOME");
+        if (home) {
+          std::string home_so = std::string(home) + "/.bpftime/libbpftime-syscall-server.so";
+          if (access(home_so.c_str(), R_OK) == 0) {
+            srv_so = home_so;
+          }
+        }
+      }
+      if (srv_so.empty()) {
+        if (access("/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-syscall-server.so", R_OK) == 0) {
+          srv_so = "/home/tchoe/Research/FGCS/ubpftrace/bin/libbpftime-syscall-server.so";
+        }
+      }
     }
     if (!srv_so.empty()) {
       setenv("BPFTIME_SYSCALL_SERVER_ACTIVE", "1", 1);
