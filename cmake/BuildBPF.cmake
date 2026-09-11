@@ -5,7 +5,7 @@
 
 find_program(GCC gcc REQUIRED)
 find_program(BPFTOOL bpftool REQUIRED)
-find_program(PAHOLE pahole REQUIRED)
+find_program(PAHOLE pahole)
 find_program(NM nm REQUIRED)
 find_program(AWK awk REQUIRED)
 find_program(LLVM_OBJCOPY
