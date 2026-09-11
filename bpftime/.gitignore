@@ -29,7 +29,7 @@ test/bin
 test/lib64
 .test_log
 test/share
-bpftool
+/bpftool
 bpftoolx
 a.out
 documents/dlsym/dlsym

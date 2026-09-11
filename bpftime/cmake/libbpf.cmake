@@ -73,32 +73,16 @@ add_dependencies(libbpf_with_headers libbpf copy_headers)
 # # Setup bpftool
 set(BPFTOOL_DIR ${CMAKE_CURRENT_LIST_DIR}/../third_party/bpftool)
 set(BPFTOOL_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/bpftool)
-
-if(EXISTS "${BPFTOOL_DIR}/src/Makefile")
-  ExternalProject_Add(bpftool
-    PREFIX bpftool
-    SOURCE_DIR ${BPFTOOL_DIR}/src
-    CONFIGURE_COMMAND "mkdir" "-p" "${BPFTOOL_INSTALL_DIR}"
-    BUILD_COMMAND "make" "EXTRA_CFLAGS=-g -O2 " "-j"
-    INSTALL_COMMAND "cp" "${BPFTOOL_DIR}/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
-    BUILD_IN_SOURCE TRUE
-    BUILD_BYPRODUCTS ${BPFTOOL_DIR}/src/bpftool
-    INSTALL_BYPRODUCTS ${BPFTOOL_INSTALL_DIR}/bpftool
-  )
-else()
-  ExternalProject_Add(bpftool
-    PREFIX bpftool
-    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/bpftool_src
-    GIT_REPOSITORY https://github.com/libbpf/bpftool.git
-    GIT_TAG v7.4.0
-    GIT_SUBMODULES_RECURSIVE TRUE
-    UPDATE_COMMAND ""
-    CONFIGURE_COMMAND "mkdir" "-p" "${BPFTOOL_INSTALL_DIR}"
-    BUILD_COMMAND "make" "-C" "${CMAKE_CURRENT_BINARY_DIR}/bpftool_src/src" "EXTRA_CFLAGS=-g -O2 " "-j"
-    INSTALL_COMMAND "cp" "${CMAKE_CURRENT_BINARY_DIR}/bpftool_src/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
-    INSTALL_BYPRODUCTS ${BPFTOOL_INSTALL_DIR}/bpftool
-  )
-endif()
+ExternalProject_Add(bpftool
+  PREFIX bpftool
+  SOURCE_DIR ${BPFTOOL_DIR}/src
+  CONFIGURE_COMMAND "mkdir" "-p" "${BPFTOOL_INSTALL_DIR}"
+  BUILD_COMMAND "make" "EXTRA_CFLAGS=-g -O2 " "-j"
+  INSTALL_COMMAND "cp" "${BPFTOOL_DIR}/src/bpftool" "${BPFTOOL_INSTALL_DIR}/bpftool"
+  BUILD_IN_SOURCE TRUE
+  BUILD_BYPRODUCTS ${BPFTOOL_DIR}/src/bpftool
+  INSTALL_BYPRODUCTS ${BPFTOOL_INSTALL_DIR}/bpftool
+)
 
 function(add_bpf_skel_generating_target target_name bpf_program output_skel)
   add_custom_command(
