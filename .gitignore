@@ -34,6 +34,7 @@ compile_commands.json
 CTestTestfile.cmake
 CTestConfiguration.ini
 *.cmake.in
+!cmake/CmakeUninstall.cmake.in
 
 # --- Generated Parser, Lexer & Source Headers ---
 src/parser.tab.cc
