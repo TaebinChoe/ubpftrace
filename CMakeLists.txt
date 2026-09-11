@@ -16,8 +16,8 @@ set(STATIC_LINKING OFF CACHE BOOL "Build bpftrace as a statically linked executa
 
 set(BUILD_ASAN OFF CACHE BOOL "Build bpftrace with -fsanitize=address")
 set(BUILD_UBSAN OFF CACHE BOOL "Build bpftrace with -fsanitize=undefined")
-set(ENABLE_MAN ON CACHE BOOL "Build man pages")
-set(BUILD_TESTING ON CACHE BOOL "Build test suite")
+set(ENABLE_TESTS OFF CACHE BOOL "Build C++ unit test suite")
+set(BUILD_TESTING ${ENABLE_TESTS} CACHE BOOL "Build test suite")
 set(ENABLE_SYSTEMD OFF CACHE BOOL "Enable systemd integration")
 set(KERNEL_HEADERS_DIR "" CACHE PATH "Hard-code kernel headers directory")
 set(SYSTEM_INCLUDE_PATHS "auto" CACHE STRING "Hard-code system include paths (colon separated, the default value \"auto\" queries clang at runtime)")
