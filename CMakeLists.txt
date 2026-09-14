@@ -105,6 +105,9 @@ include_directories(SYSTEM ${LIBELF_INCLUDE_DIRS})
 find_package(LibCereal REQUIRED)
 include_directories(SYSTEM ${LIBCEREAL_INCLUDE_DIRS})
 
+find_package(Boost REQUIRED)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+
 
 include(CheckSymbolExists)
 set(CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
@@ -227,8 +230,11 @@ add_custom_target(ubpftrace_all_binaries ALL
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftrace> ${CMAKE_CURRENT_SOURCE_DIR}/bin/ubpftrace
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftime-agent> ${CMAKE_CURRENT_SOURCE_DIR}/bin/libbpftime-agent.so
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftime-syscall-server> ${CMAKE_CURRENT_SOURCE_DIR}/bin/libbpftime-syscall-server.so
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:test_hpc_shm_io> ${CMAKE_CURRENT_SOURCE_DIR}/bin/test_hpc_shm_io
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ubpftrace-cat> ${CMAKE_CURRENT_SOURCE_DIR}/bin/ubpftrace-cat
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ubpftrace-top> ${CMAKE_CURRENT_SOURCE_DIR}/bin/ubpftrace-top
   COMMENT "Copying compiled binaries to bin/ directory"
-  DEPENDS bpftrace bpftime-agent bpftime-syscall-server
+  DEPENDS bpftrace bpftime-agent bpftime-syscall-server test_hpc_shm_io ubpftrace-cat ubpftrace-top
 )
 
 if (BUILD_TESTING)

@@ -84,6 +84,11 @@ public:
   std::string str_trunc_trailer = "..";
   ConfigMissingProbes missing_probes = ConfigMissingProbes::error;
   StackMode stack_mode = StackMode::bpftrace;
+  uint64_t live_interval_ms = 0;
+  std::string live_dir = "";
+  bool stream = false;
+  uint64_t stream_flush_ms = 20;
+  uint64_t stream_buffer_kb = 8;
 
   // Initialized in the constructor.
   UserSymbolCacheType user_symbol_cache_type;

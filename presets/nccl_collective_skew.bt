@@ -1,0 +1,97 @@
+// ============================================================================
+// UBPFTRACE PRESET: nccl_collective_skew.bt
+// Scenario: Distributed AI / LLM Training NCCL Collective Skew & Stragglers
+//
+// Diagnoses:
+//  - Latency distribution of AllReduce, ReduceScatter, and AllGather collectives.
+//  - GPU rank tail-latency stragglers causing synchronous SGD training stalls.
+//  - Total tensor data elements synchronized per collective operation.
+//
+// Usage:
+//  ubpftrace -c "torchrun --nproc_per_node=4 train_llm.py" presets/nccl_collective_skew.bt
+//  srun -N 2 -n 8 ubpftrace -c "python train.py" presets/nccl_collective_skew.bt
+// ============================================================================
+
+uprobe:nccl:ncclAllReduce {
+    @start_allreduce[tid] = nsecs;
+    @allreduce_count[tid] = arg2;
+}
+
+uretprobe:nccl:ncclAllReduce /@start_allreduce[tid]/ {
+    $lat_us = (nsecs - @start_allreduce[tid]) / 1000;
+    $count = @allreduce_count[tid];
+
+    @nccl_latency_us["AllReduce"] = hist($lat_us);
+    @nccl_stats_us["AllReduce"] = stats($lat_us);
+    @rank_allreduce_us[rank] = hist($lat_us);
+    @rank_allreduce_stats[rank] = stats($lat_us);
+    @total_elements["AllReduce"] = sum($count);
+    @call_counts["AllReduce"] = count();
+
+    delete(@start_allreduce[tid]);
+    delete(@allreduce_count[tid]);
+}
+
+uprobe:nccl:ncclReduceScatter {
+    @start_reducescatter[tid] = nsecs;
+    @reducescatter_count[tid] = arg2;
+}
+
+uretprobe:nccl:ncclReduceScatter /@start_reducescatter[tid]/ {
+    $lat_us = (nsecs - @start_reducescatter[tid]) / 1000;
+    $count = @reducescatter_count[tid];
+
+    @nccl_latency_us["ReduceScatter"] = hist($lat_us);
+    @nccl_stats_us["ReduceScatter"] = stats($lat_us);
+    @rank_reducescatter_us[rank] = hist($lat_us);
+    @rank_reducescatter_stats[rank] = stats($lat_us);
+    @total_elements["ReduceScatter"] = sum($count);
+    @call_counts["ReduceScatter"] = count();
+
+    delete(@start_reducescatter[tid]);
+    delete(@reducescatter_count[tid]);
+}
+
+uprobe:nccl:ncclAllGather {
+    @start_allgather[tid] = nsecs;
+    @allgather_count[tid] = arg2;
+}
+
+uretprobe:nccl:ncclAllGather /@start_allgather[tid]/ {
+    $lat_us = (nsecs - @start_allgather[tid]) / 1000;
+    $count = @allgather_count[tid];
+
+    @nccl_latency_us["AllGather"] = hist($lat_us);
+    @nccl_stats_us["AllGather"] = stats($lat_us);
+    @rank_allgather_us[rank] = hist($lat_us);
+    @rank_allgather_stats[rank] = stats($lat_us);
+    @total_elements["AllGather"] = sum($count);
+    @call_counts["AllGather"] = count();
+
+    delete(@start_allgather[tid]);
+    delete(@allgather_count[tid]);
+}
+
+uprobe:nccl:ncclBroadcast {
+    @start_bcast[tid] = nsecs;
+    @bcast_count[tid] = arg2;
+}
+
+uretprobe:nccl:ncclBroadcast /@start_bcast[tid]/ {
+    $lat_us = (nsecs - @start_bcast[tid]) / 1000;
+    $count = @bcast_count[tid];
+
+    @nccl_latency_us["Broadcast"] = hist($lat_us);
+    @nccl_stats_us["Broadcast"] = stats($lat_us);
+    @total_elements["Broadcast"] = sum($count);
+    @call_counts["Broadcast"] = count();
+
+    delete(@start_bcast[tid]);
+    delete(@bcast_count[tid]);
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("         NCCL DISTRIBUTED AI COLLECTIVE SKEW SUMMARY        \n");
+    printf("============================================================\n");
+}

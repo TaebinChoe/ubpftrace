@@ -7,6 +7,8 @@ endif()
 add_compile_options($<$<BOOL:${BUILD_ASAN}>:-fsanitize=address>)
 add_compile_options($<$<BOOL:${BUILD_UBSAN}>:-fsanitize=undefined>)
 
+include_directories(${CMAKE_SOURCE_DIR}/bpftime/runtime/include)
+
 add_library(required_resources required_resources.cpp)
 
 add_library(compiler_core STATIC
@@ -66,9 +68,9 @@ target_compile_definitions(bpftrace PRIVATE ${BPFTRACE_FLAGS})
 
 # TODO(Jiawei Zhao): this conditional can be removed when we no longer use bcc.
 if(STATIC_LINKING)
-  target_link_libraries(bpftrace libbpftrace)
+  target_link_libraries(bpftrace libbpftrace ubpf_hpc_core)
 else()
-  target_link_libraries(bpftrace libbpftrace ${LIBBPF_LIBRARIES})
+  target_link_libraries(bpftrace libbpftrace ubpf_hpc_core ${LIBBPF_LIBRARIES})
 endif(STATIC_LINKING)
 
 # compile definitions
@@ -100,9 +102,9 @@ target_link_options(bpftrace BEFORE PRIVATE
 )
 
 
-target_link_libraries(ubpftrace_runtime debugfs output symbols tracefs util)
+target_link_libraries(ubpftrace_runtime debugfs output symbols tracefs util ubpf_hpc_core)
 target_link_libraries(ubpftrace_runtime ${LIBBPF_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBBCC_LIBRARIES})
-target_link_libraries(libbpftrace "-Wl,--start-group" ubpftrace_runtime symbols aot ast arch util cxxdemangler_llvm "-Wl,--end-group")
+target_link_libraries(libbpftrace "-Wl,--start-group" ubpftrace_runtime ubpf_hpc_core symbols aot ast arch util cxxdemangler_llvm "-Wl,--end-group")
 
 if(LIBPCAP_FOUND)
   target_link_libraries(libbpftrace ${LIBPCAP_LIBRARIES})

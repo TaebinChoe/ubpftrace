@@ -1,0 +1,12 @@
+// Lustre OST Bottleneck Profiler for ubpftrace
+// Maps (fd, offset) -> Physical Lustre OST ID (obdidx)
+
+uprobe:/lib64/libc.so.6:pwrite64 {
+    $fd = arg0;
+    $bytes = arg2;
+    $offset = arg3;
+    $ost = lustre_ost($fd, $offset);
+    printf("pwrite64 fd=%d offset=%lu bytes=%lu -> OST %d\n", $fd, $offset, $bytes, $ost);
+    @ost_bytes[$ost] = sum($bytes);
+    @ost_ops[$ost] = count();
+}

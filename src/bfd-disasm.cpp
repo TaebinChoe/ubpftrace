@@ -1,3 +1,6 @@
+#ifndef LIBBFD_INIT_DISASM_INFO_FOUR_ARGS_SIGNATURE
+#define LIBBFD_INIT_DISASM_INFO_FOUR_ARGS_SIGNATURE 1
+#endif
 #include <fcntl.h>
 #include <memory>
 #include <sys/stat.h>

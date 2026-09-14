@@ -45,6 +45,9 @@
 #include "syscall_trace_attach_impl.hpp"
 #include "syscall_trace_attach_private_data.hpp"
 #endif
+#include "hpc/ubpf_agent_manager.hpp"
+#include "hpc/ubpf_live_exporter.hpp"
+#include <json.hpp>
 
 using namespace bpftime;
 using namespace bpftime::attach;
@@ -436,6 +439,8 @@ static int perform_detach()
 			getpid());
 	}
 	SPDLOG_DEBUG("Detaching done");
+	bpftime::hpc::ubpf_live_exporter::set_map_snapshot_provider(nullptr);
+	bpftime::hpc::ubpf_agent_manager::instance().shutdown();
 	bpftime_logger_flush();
 	return detach_err < 0 ? detach_err : 0;
 }
@@ -1040,6 +1045,75 @@ extern "C" void bpftime_agent_main(const gchar *data, gboolean *stay_resident)
 				return;
 			}
 			srand(std::random_device()());
+			bpftime::hpc::ubpf_live_exporter::set_map_snapshot_provider([]() -> nlohmann::json {
+				nlohmann::json maps_json = nlohmann::json::object();
+				const handler_manager *mgr = shm_holder.global_shared_memory.get_manager();
+				if (!mgr) return maps_json;
+				for (std::size_t i = 0; i < mgr->size(); ++i) {
+					if (!mgr->is_allocated(i)) continue;
+					const auto &handler = mgr->get_handler(i);
+					if (std::holds_alternative<bpf_map_handler>(handler)) {
+						const auto &map = std::get<bpf_map_handler>(handler);
+						std::string map_name = map.name.empty() ? ("map_" + std::to_string(i)) : map.name;
+						nlohmann::json map_obj = nlohmann::json::object();
+						map_obj["type"] = map.attr.type;
+						map_obj["key_size"] = map.attr.key_size;
+						map_obj["value_size"] = map.attr.value_size;
+						map_obj["max_entries"] = map.attr.max_ents;
+						nlohmann::json entries = nlohmann::json::object();
+
+						if (auto array_opt = map.try_get_array_map_impl()) {
+							auto *arr = *array_opt;
+							for (uint32_t idx = 0; idx < map.attr.max_ents; ++idx) {
+								const void *elem = arr->elem_lookup(&idx);
+								if (elem) {
+									if (map.attr.value_size == sizeof(uint64_t)) {
+										uint64_t val = *reinterpret_cast<const uint64_t *>(elem);
+										if (val != 0) entries[std::to_string(idx)] = val;
+									} else if (map.attr.value_size == sizeof(uint32_t)) {
+										uint32_t val = *reinterpret_cast<const uint32_t *>(elem);
+										if (val != 0) entries[std::to_string(idx)] = val;
+									}
+								}
+							}
+						} else {
+							std::vector<uint8_t> cur_key(map.attr.key_size, 0);
+							std::vector<uint8_t> next_key(map.attr.key_size, 0);
+							const void *p_cur = nullptr;
+							size_t count = 0;
+							while (count < map.attr.max_ents && map.bpf_map_get_next_key(p_cur, next_key.data(), true) == 0) {
+								const void *val_ptr = map.map_lookup_elem(next_key.data(), true);
+								if (val_ptr) {
+									std::string key_str;
+									if (map.attr.key_size == sizeof(uint64_t)) {
+										key_str = std::to_string(*reinterpret_cast<const uint64_t *>(next_key.data()));
+									} else if (map.attr.key_size == sizeof(uint32_t)) {
+										key_str = std::to_string(*reinterpret_cast<const uint32_t *>(next_key.data()));
+									} else {
+										char hex_buf[64];
+										snprintf(hex_buf, sizeof(hex_buf), "k_%zu", count);
+										key_str = hex_buf;
+									}
+									if (map.attr.value_size == sizeof(uint64_t)) {
+										entries[key_str] = *reinterpret_cast<const uint64_t *>(val_ptr);
+									} else if (map.attr.value_size == sizeof(uint32_t)) {
+										entries[key_str] = *reinterpret_cast<const uint32_t *>(val_ptr);
+									} else {
+										entries[key_str] = 1;
+									}
+								}
+								cur_key = next_key;
+								p_cur = cur_key.data();
+								count++;
+							}
+						}
+						map_obj["entries"] = entries;
+						maps_json[map_name] = map_obj;
+					}
+				}
+				return maps_json;
+			});
+			bpftime::hpc::ubpf_agent_manager::instance().init();
 
 			int auto_refresh_ms = parse_auto_refresh_ms(data);
 			pid_t loader_pid = parse_loader_pid(data);

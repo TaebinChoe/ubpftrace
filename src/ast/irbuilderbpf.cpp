@@ -107,6 +107,71 @@ Value *IRBuilderBPF::CreateGetTid(const Location &loc, bool force_init)
   return tid;
 }
 
+Value *IRBuilderBPF::CreateGetMpiRank(const Location &loc)
+{
+  FunctionType *get_rank_func_type = FunctionType::get(getInt32Ty(), false);
+  return CreateHelperCall(static_cast<bpf_func_id>(501),
+                          get_rank_func_type,
+                          {},
+                          true,
+                          "get_mpi_rank",
+                          loc);
+}
+
+Value *IRBuilderBPF::CreateGetNodeId(const Location &loc)
+{
+  FunctionType *get_node_func_type = FunctionType::get(getInt32Ty(), false);
+  return CreateHelperCall(static_cast<bpf_func_id>(502),
+                          get_node_func_type,
+                          {},
+                          true,
+                          "get_node_id",
+                          loc);
+}
+
+Value *IRBuilderBPF::CreateGetLocalRank(const Location &loc)
+{
+  FunctionType *get_local_rank_func_type = FunctionType::get(getInt32Ty(), false);
+  return CreateHelperCall(static_cast<bpf_func_id>(503),
+                          get_local_rank_func_type,
+                          {},
+                          true,
+                          "get_local_rank",
+                          loc);
+}
+
+void IRBuilderBPF::CreateGetNodename(AllocaInst *buf,
+                                     size_t size,
+                                     const Location &loc)
+{
+  assert(buf->getAllocatedType()->isArrayTy() &&
+         buf->getAllocatedType()->getArrayNumElements() >= size &&
+         buf->getAllocatedType()->getArrayElementType() == getInt8Ty());
+
+  FunctionType *get_nodename_func_type = FunctionType::get(
+      getInt64Ty(), { buf->getType(), getInt64Ty() }, false);
+  CallInst *call = CreateHelperCall(static_cast<bpf_func_id>(504),
+                                    get_nodename_func_type,
+                                    { buf, getInt64(size) },
+                                    false,
+                                    "get_nodename",
+                                    loc);
+  CreateHelperErrorCond(call, static_cast<bpf_func_id>(504), loc);
+}
+
+Value *IRBuilderBPF::CreateGetLustreOst(Value *fd, Value *offset, const Location &loc)
+{
+  FunctionType *get_lustre_ost_func_type = FunctionType::get(
+      getInt32Ty(), { getInt64Ty(), getInt64Ty() }, false);
+  return CreateHelperCall(static_cast<bpf_func_id>(505),
+                          get_lustre_ost_func_type,
+                          { CreateIntCast(fd, getInt64Ty(), true),
+                            CreateIntCast(offset, getInt64Ty(), false) },
+                          true,
+                          "get_lustre_ost",
+                          loc);
+}
+
 AllocaInst *IRBuilderBPF::CreateUSym(Value *val,
                                      int probe_id,
                                      const Location &loc)

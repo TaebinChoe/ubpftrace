@@ -1,0 +1,80 @@
+// ============================================================================
+// UBPFTRACE PRESET: cuda_sync_bubbles.bt
+// Scenario: GPU Pipeline Bubble & Host-Device Synchronization Profiler
+//
+// Diagnoses:
+//  - Silent blocking CPU-GPU synchronization stalls (cudaStreamSynchronize, .item()).
+//  - Host thread idle time waiting for asynchronous GPU execution queues to drain.
+//  - Cumulative stall latency per synchronization primitive across ranks.
+//
+// Usage:
+//  ubpftrace -c "python train.py" presets/cuda_sync_bubbles.bt
+//  srun -N 2 -n 8 ubpftrace -c "python train.py" presets/cuda_sync_bubbles.bt
+// ============================================================================
+
+uprobe:cudart:cudaStreamSynchronize {
+    @start_stream_sync[tid] = nsecs;
+}
+
+uretprobe:cudart:cudaStreamSynchronize /@start_stream_sync[tid]/ {
+    $dur_us = (nsecs - @start_stream_sync[tid]) / 1000;
+    @sync_stall_us["cudaStreamSynchronize"] = hist($dur_us);
+    @sync_stats_us["cudaStreamSynchronize"] = stats($dur_us);
+    @sync_calls["cudaStreamSynchronize"] = count();
+    @rank_sync_stall_us[rank] = sum($dur_us);
+
+    delete(@start_stream_sync[tid]);
+}
+
+uprobe:cudart:cudaDeviceSynchronize {
+    @start_dev_sync[tid] = nsecs;
+}
+
+uretprobe:cudart:cudaDeviceSynchronize /@start_dev_sync[tid]/ {
+    $dur_us = (nsecs - @start_dev_sync[tid]) / 1000;
+    @sync_stall_us["cudaDeviceSynchronize"] = hist($dur_us);
+    @sync_stats_us["cudaDeviceSynchronize"] = stats($dur_us);
+    @sync_calls["cudaDeviceSynchronize"] = count();
+    @rank_sync_stall_us[rank] = sum($dur_us);
+
+    delete(@start_dev_sync[tid]);
+}
+
+uprobe:cudart:cudaEventSynchronize {
+    @start_event_sync[tid] = nsecs;
+}
+
+uretprobe:cudart:cudaEventSynchronize /@start_event_sync[tid]/ {
+    $dur_us = (nsecs - @start_event_sync[tid]) / 1000;
+    @sync_stall_us["cudaEventSynchronize"] = hist($dur_us);
+    @sync_stats_us["cudaEventSynchronize"] = stats($dur_us);
+    @sync_calls["cudaEventSynchronize"] = count();
+    @rank_sync_stall_us[rank] = sum($dur_us);
+
+    delete(@start_event_sync[tid]);
+}
+
+uprobe:cudart:cudaMemcpy {
+    @start_memcpy[tid] = nsecs;
+    @memcpy_bytes[tid] = arg2;
+}
+
+uretprobe:cudart:cudaMemcpy /@start_memcpy[tid]/ {
+    $dur_us = (nsecs - @start_memcpy[tid]) / 1000;
+    $bytes = @memcpy_bytes[tid];
+
+    @sync_stall_us["cudaMemcpy_Sync"] = hist($dur_us);
+    @sync_stats_us["cudaMemcpy_Sync"] = stats($dur_us);
+    @sync_memcpy_bytes = sum($bytes);
+    @sync_calls["cudaMemcpy_Sync"] = count();
+    @rank_sync_stall_us[rank] = sum($dur_us);
+
+    delete(@start_memcpy[tid]);
+    delete(@memcpy_bytes[tid]);
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("         CUDA HOST-DEVICE SYNCHRONIZATION SUMMARY           \n");
+    printf("============================================================\n");
+}

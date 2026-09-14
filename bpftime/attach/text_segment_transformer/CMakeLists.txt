@@ -20,3 +20,7 @@ if (${TEST_LCOV})
     target_compile_options(bpftime_text_segment_transformer PRIVATE -fprofile-arcs -ftest-coverage -fprofile-update=atomic)
     target_link_options(bpftime_text_segment_transformer PRIVATE -fprofile-arcs)
 endif()
+set_property(TARGET bpftime_text_segment_transformer PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_compile_options(bpftime_text_segment_transformer PRIVATE -fPIC)
+target_link_options(bpftime_text_segment_transformer PRIVATE "-Wl,-z,notext" "-Wl,-Bsymbolic")

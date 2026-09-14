@@ -35,8 +35,7 @@ Standard kernel-based `bpftrace` requires `root` privileges (`sudo` / `CAP_BPF`)
 
 ## 🛠️ Prerequisites & Dependencies
 
-On Ubuntu 22.04 / 24.04 or Debian-based systems, install the required build dependencies:
-
+### Option A: Standard Linux (Ubuntu / Debian)
 ```bash
 sudo apt update
 sudo apt install -y \
@@ -57,33 +56,82 @@ sudo apt install -y \
     pahole
 ```
 
+### Option B: HPC Supercomputers & Conda Environments (NERSC Perlmutter, Cray EX, SUSE/RHEL)
+On multi-tenant HPC systems without `sudo`, install dependencies via Conda (e.g. `conda-forge`):
+
+```bash
+# 1. Activate your Conda environment
+conda activate <your_env>   # e.g., conda activate tchoe_env
+
+# 2. Unset conflicting global include paths (Prevents stdlib.h collision)
+unset C_INCLUDE_PATH
+unset CPLUS_INCLUDE_PATH
+
+# 3. Install core build dependencies
+conda install -y -c conda-forge \
+    cmake \
+    boost-cpp \
+    elfutils \
+    binutils \
+    zlib \
+    bison \
+    flex \
+    spdlog \
+    cereal
+```
+
+> **Note on `bcc` & LLVM:** If using `bcc` with LLVM in Conda, ensure `bcc` is built with `-DENABLE_LLVM_SHARED=ON` against Conda's `libLLVM.so` to avoid duplicate command-line option registration.
+
 ---
 
 ## 📦 Building from Source (Copy & Paste)
 
-Clone and build the entire `ubpftrace` toolchain in one simple step:
+### Method 1: Automated 1-Click HPC / Conda Build (Recommended for HPC)
+
+The repository provides an automated build script [`scripts/build_hpc.sh`](scripts/build_hpc.sh) that auto-detects GCC, sanitizes environment variables, auto-compiles `libiberty.a` if needed, resolves Boost headers from Conda, and builds all binaries:
 
 ```bash
-# 1. Clone and navigate to the repository
+# Clone the repository
 git clone https://github.com/TaebinChoe/ubpftrace.git
 cd ubpftrace
 
-# 2. Build everything (ubpftrace frontend + bpftime runtime agent) at once
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=OFF
-cmake --build build -j$(nproc)
-
-echo ">>> ubpftrace and libraries successfully built in bin/ !"
+# Run 1-click automated build
+./scripts/build_hpc.sh
 ```
 
-All compiled binaries (`bin/ubpftrace`, `bin/libbpftime-agent.so`, `bin/libbpftime-syscall-server.so`) are generated automatically inside the `bin/` directory.
+---
 
+### Method 2: Manual CMake Build
+
+```bash
+# 1. Clone and navigate to repository
+git clone https://github.com/TaebinChoe/ubpftrace.git
+cd ubpftrace
+
+# 2. Configure (Specify GCC to avoid Cray wrapper conflicts)
+unset C_INCLUDE_PATH CPLUS_INCLUDE_PATH
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH"
+
+cmake -B build -S . \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_TESTS=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCMAKE_C_COMPILER=/usr/bin/gcc \
+    -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+    -DCMAKE_PREFIX_PATH="$CONDA_PREFIX;$CONDA_PREFIX/lib;$CONDA_PREFIX/lib64"
+
+# 3. Compile
+cmake --build build -j$(nproc)
+```
+
+All compiled binaries (`bin/ubpftrace`, `bin/libbpftime-agent.so`, `bin/libbpftime-syscall-server.so`) are generated automatically in the `bin/` directory.
 
 Verify the installation:
 
 ```bash
 ./bin/ubpftrace --version
 ```
-*(Outputs `bpftrace v0.27.0` cleanly without requiring `sudo`)*
+*(Outputs `bpftrace v0.27.0` cleanly without requiring `sudo` or `root`)*
 
 ---
 
@@ -323,32 +371,277 @@ uretprobe:mpi:MPI_Allreduce /@allreduce_start[tid]/ {
 }
 ```
 
-#### Run Command:
+#### Run Command (Multi-Node / Slurm HPC Environment):
 ```bash
-./bin/ubpftrace -c "examples/apps/hpc_app" ./examples/mpi_bottleneck.bt
+# Option A: Using the 1-Click Multi-Node Launcher (Auto salloc + srun)
+./scripts/run_mpi_srun.sh <num_nodes> <num_tasks> <time_limit>
+# Example: Trace across 2 nodes with 2 MPI ranks:
+./scripts/run_mpi_srun.sh 2 2 00:05:00
+
+# Option B: Running directly with salloc + srun
+salloc -N 2 -C cpu -q interactive -t 00:05:00 -- \
+    srun -N 2 -n 2 ./bin/ubpftrace -c "examples/apps/hpc_app" ./examples/mpi_bottleneck.bt
 ```
 
-#### Sample Output:
+#### Sample Output (Tracing Across 2 Physical Nodes):
 ```text
-@allreduce_latency_us: 
-[0]                    2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[1]                    1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                               |
-@allreduce_stats_us: { .count = 3, .average = 0, .total = 1 }
+Attached 7 probes
+Attached 7 probes
+[ubpftrace MPI] MPI_Send(count=1024 elements, dest_rank=1)
+[ubpftrace MPI] MPI_Recv(max_count=1024 elements, src_rank=1)
+[ubpftrace MPI] MPI_Recv(max_count=1024 elements, src_rank=0)
+[ubpftrace MPI] MPI_Send(count=1024 elements, dest_rank=0)
+[ubpftrace MPI] MPI_Barrier wait time: 40070 us
+[ubpftrace MPI] MPI_Allreduce latency: 81 us
+[Rank 0/2] HPC Worker started (node: nid004222).
+[Rank 1/2] HPC Worker started (node: nid004223).
 
 @barrier_latency_us: 
-[0]                    2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[1]                    1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                               |
-@barrier_stats_us: { .count = 3, .average = 0, .total = 1 }
+[32K, 64K)             3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+@barrier_stats_us: { .count = 3, .average = 40046, .total = 120140 }
+
+@allreduce_latency_us: 
+[16, 32)               1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[32, 64)               1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[64, 128)              1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+@allreduce_stats_us: { .count = 3, .average = 44, .total = 133 }
 
 @mpi_call_counts[MPI_Allreduce]: 3
 @mpi_call_counts[MPI_Barrier]: 3
 @mpi_call_counts[MPI_Recv]: 3
 @mpi_call_counts[MPI_Send]: 3
 @send_msg_elements_hist: 
-[256, 512)             3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-@send_volume_by_dest[0]: 768
-@total_barrier_time_us: 1
-@total_send_elements: 768
+[1K, 2K)               3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+@send_volume_by_dest[0]: 3072
+@total_barrier_time_us: 120140
+@total_send_elements: 3072
+```
+
+---
+
+### Example 7: Lustre Parallel File System Bottleneck Profiling (`examples/lustre_profiler.bt`)
+
+Identify I/O bottlenecks across Lustre Object Storage Targets (OSTs) by dynamically resolving file descriptors and byte offsets to physical OST indices (`obdidx`) in pure userspace:
+
+#### Builtin Helper: `lustre_ost(int fd, uint64_t offset)`
+- Issues `ioctl(fd, LL_IOC_LOV_GETSTRIPE, ...)` and caches file stripe metadata per file descriptor.
+- Computes target OST index: `stripe_idx = (offset / stripe_size) % stripe_count` -> `lmm_objects[stripe_idx].l_ost_idx`.
+- Returns physical target `ost_id` (or -1 for non-Lustre files).
+
+#### Script (`examples/lustre_profiler.bt`):
+```bt
+uprobe:/lib64/libc.so.6:pwrite64 {
+    $fd = arg0;
+    $bytes = arg2;
+    $offset = arg3;
+    $ost = lustre_ost($fd, $offset);
+    printf("pwrite64 fd=%d offset=%lu bytes=%lu -> OST %d\n", $fd, $offset, $bytes, $ost);
+    @ost_bytes[$ost] = sum($bytes);
+    @ost_ops[$ost] = count();
+}
+```
+
+#### Run Command:
+```bash
+./bin/ubpftrace -c "examples/apps/lustre_io_app" ./examples/lustre_profiler.bt
+```
+
+#### Sample Output:
+```text
+Attached 1 probe
+[LustreApp] Target file opened: /pscratch/sd/s/sgkim/scratch_lustre_test.dat (fd=10)
+pwrite64 fd=10 offset=0 bytes=1048576 -> OST 73
+pwrite64 fd=10 offset=1048576 bytes=1048576 -> OST 74
+pwrite64 fd=10 offset=2097152 bytes=1048576 -> OST 75
+pwrite64 fd=10 offset=3145728 bytes=1048576 -> OST 76
+pwrite64 fd=10 offset=4194304 bytes=1048576 -> OST 73
+pwrite64 fd=10 offset=5242880 bytes=1048576 -> OST 74
+pwrite64 fd=10 offset=6291456 bytes=1048576 -> OST 75
+pwrite64 fd=10 offset=7340032 bytes=1048576 -> OST 76
+[LustreApp] Done.
+
+@ost_bytes[73]: 2097152
+@ost_bytes[74]: 2097152
+@ost_bytes[75]: 2097152
+@ost_bytes[76]: 2097152
+@ost_ops[73]: 2
+@ost_ops[74]: 2
+@ost_ops[75]: 2
+@ost_ops[76]: 2
+```
+
+---
+
+## 🚀 Multi-Node HPC Dynamic Tracing & Offline Toolchain
+
+`ubpftrace` features a high-throughput, Lustre-aligned multi-node engine designed to trace distributed MPI applications across thousands of nodes with nanosecond latency:
+
+```
+  Node 0 (Compute Node)                   Node 1 (Compute Node)
+  ├── Rank 0 (Producer) ──┐               ├── Rank 2 (Producer) ──┐
+  ├── Rank 1 (Producer) ──┼─> Node SHM    ├── Rank 3 (Producer) ──┼─> Node SHM
+  └── I/O Worker ─────────┘   (Epoch-     └── I/O Worker ─────────┘   (Epoch-
+      │                        Protected)     │                        Protected)
+      ▼ (2MB Aligned LZ4)                     ▼ (2MB Aligned LZ4)
+  `ubpftrace_<job>_node_0.ubpf`           `ubpftrace_<job>_node_1.ubpf`
+                      │                       │
+                      └───────────┬───────────┘
+                                  ▼
+                     `ubpftrace-cat` Decoder / Merger
+                     ├── --info   : Chunk metadata & compression ratio
+                     ├── --dump   : Formatted text event dump
+                     ├── --merge  : Multi-stream min-heap chronological merge
+                     └── --chrome : Chrome Tracing timeline (chrome://tracing)
+```
+
+### 1. Launching Tracing Across Multi-Node Slurm Jobs
+
+Set `UBPFTRACE_OUTPUT_DIR` to a shared parallel filesystem path (e.g., Lustre `$SCRATCH`):
+
+```bash
+# Launch 4 ranks across 2 nodes tracing simulate_computation()
+salloc -N 2 -C cpu -q interactive -t 00:10:00 -- \
+  srun -N 2 -n 4 env UBPFTRACE_OUTPUT_DIR=$SCRATCH/traces \
+    ./bin/ubpftrace -c "./examples/apps/hpc_app" -e '
+      uprobe:./examples/apps/hpc_app:simulate_computation {
+          printf("Rank %d iter %d start\n", rank, arg1);
+      }
+    '
+```
+
+### 2. Generated Tracing Artifacts
+
+1. **Per-Node Trace Containers (`.ubpf`)**:
+   `ubpftrace_<jobid>_node_<nid>.ubpf` contains 2MB stripe-aligned, LZ4-compressed binary chunks with CRC32 integrity verification. Exactly one file is written per physical compute node, protecting Lustre Metadata Servers (MDS) from file explosion.
+2. **Consolidated Summary Profile (`_summary.json`)**:
+   `ubpftrace_<jobid>_summary.json` is generated at `MPI_Finalize` via a Score-P style binomial tree reduction across an isolated private communicator (`MPI_Comm_dup`), aggregating per-rank recorded and dropped event counts.
+
+### 3. Inspecting & Decoding Traces with `ubpftrace-cat`
+
+The repository includes `ubpftrace-cat` in `bin/` for high-throughput out-of-band trace analysis:
+
+## ⚡ Real-Time Observability & Monitoring Options
+
+While post-run time-bucketed analysis (Scenario B) guarantees maximum application throughput and strict zero-jitter invariants, `ubpftrace` provides two powerful real-time observability modes:
+
+### 1. Periodic Metric Snapshotting (Scenario A)
+Inspect running aggregations without blocking compute threads or issuing global MPI collectives:
+- `-L, --live <SEC>`: Interval (in seconds) for periodic Scenario A metric snapshotting.
+- `--live-ms <MS>`: Sub-second interval (in milliseconds) down to 50ms for rapid metric inspection.
+- `--live-dir <DIR>`: Custom output directory for out-of-band atomic JSON snapshots (`node_<nid>.json`). Snapshots are generated via hidden temporary files and atomic POSIX `rename()` to guarantee parse-tear-free telemetry.
+
+```bash
+# Snapshot metrics every 500ms to a shared directory:
+./bin/ubpftrace --live-ms 500 --live-dir /tmp/ubpf_snapshots -c "examples/apps/hpc_app" presets/mpi_straggler_detector.bt
+```
+
+### 2. Low-Latency Micro-Buffered Live Event Streaming
+Stream formatted traces (`printf(...)`) in real time to stdout with sub-frame latency and strict intra-node chronological monotonicity:
+- `--stream`: Enable micro-buffered live terminal event streaming.
+- `--stream-flush-ms <MS>`: Soft-timer flush timeout in milliseconds (default: `20ms`).
+- `--stream-buffer-kb <KB>`: Buffer size threshold in kilobytes (default: `8KB`).
+
+```bash
+# Stream trace events with 20ms maximum latency:
+./bin/ubpftrace --stream --stream-flush-ms 20 --stream-buffer-kb 8 -c "examples/apps/puts_app" -e 'uprobe:libc:puts { printf("puts: %s\n", str(arg0)); }'
+```
+
+---
+
+## 📊 Live Cluster Dashboard (`ubpftrace-top`)
+
+`ubpftrace-top` is a real-time cluster monitoring dashboard that continuously polls and aggregates Scenario A metric snapshots across all compute nodes:
+
+```
+================================================================================
+ ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+================================================================================
+ Snapshot Dir : /tmp/ubpf_snapshots
+ Active Nodes : 64 | Stragglers: 2 | Interval: 1s
+--------------------------------------------------------------------------------
+
+[CLUSTER-WIDE METRIC AGGREGATIONS]
+Map Name                        Global Max    Global Min      Global Sum Entries
+--------------------------------------------------------------------------------
+@barrier_lat_us                     64210            12          1984200     192
+@allreduce_lat_us                     450             8            23100     192
+
+[NODE TOPOLOGY & SYNC STATUS]
+Node ID   Hostname            Epoch     Latency Lag (ms)    Status         
+---------------------------------------------------------------------------
+1001      nid004220           142       2.10                [HEALTHY]
+1002      nid004221           142       1.85                [HEALTHY]
+1003      nid004222           138       420.50              [STRAGGLER]
+```
+
+### Usage Modes:
+- **Interactive ANSI TUI**:
+  ```bash
+  ./bin/ubpftrace-top --dir /tmp/ubpf_snapshots --interval 1
+  ```
+- **Automated JSON Streaming Pipeline (for Grafana / PromQL ingest)**:
+  ```bash
+  ./bin/ubpftrace-top --dir /tmp/ubpf_snapshots --json --interval 2
+  ```
+- **Single-Shot Verification**:
+  ```bash
+  ./bin/ubpftrace-top --dir /tmp/ubpf_snapshots --once
+  ```
+
+---
+
+## 🛠️ Offline Trace Processing Toolchain (`ubpftrace-cat`)
+
+`ubpftrace-cat` is a high-performance offline decoder for `.ubpf` 2MB stripe-aligned container files:
+
+### 1. Inspect Container Metadata & Compression Savings
+```bash
+./bin/ubpftrace-cat --info traces/ubpftrace_1111_node_0.ubpf
+```
+Outputs total chunk counts, uncompressed vs compressed sizes, CRC32 block validations, and LZ4 compression savings.
+
+### 2. Stream Formatted Text Event Logs
+```bash
+./bin/ubpftrace-cat --dump traces/ubpftrace_1111_node_0.ubpf
+```
+
+### 3. Multi-Node Chronological Merge (K-Way Min-Heap)
+```bash
+# Globally order events from hundreds of node containers into a unified timestamp stream:
+./bin/ubpftrace-cat --merge traces/ubpftrace_1111_node_*.ubpf
+```
+
+### 4. Export to Google Chrome / Perfetto Timeline
+```bash
+# Export container events to Google Chrome Trace Event format:
+./bin/ubpftrace-cat --chrome timeline.json traces/ubpftrace_1111_node_0.ubpf
+
+# Load timeline.json in https://ui.perfetto.dev or chrome://tracing
+```
+
+---
+
+## 🎯 Flagship Production Presets Suite (`presets/`)
+
+`ubpftrace` includes 6 ready-to-use production diagnostic presets covering major HPC and Distributed AI performance bottlenecks:
+
+| Preset Script | Workload Domain | Key Performance Metrics Diagnosed |
+| :--- | :--- | :--- |
+| **`ai_checkpoint_lustre.bt`** | Large-scale AI / LLM Training | Parallel I/O checkpoint bandwidth, latency histograms, per-OST stripe distribution (`lustre_ost`), and storage hotspot detection. |
+| **`mpi_straggler_detector.bt`** | Multi-Node MPI Workloads | Per-rank barrier & collective wait time histograms, identifying compute load imbalance and delayed ranks. |
+| **`mpi_p2p_traffic.bt`** | HPC Scientific Simulations | Per-rank send/recv volumes, halo-exchange message size log2 distributions, and point-to-point traffic patterns. |
+| **`openmp_hybrid_contention.bt`** | Hybrid MPI + OpenMP Jobs | OpenMP thread barrier wait latency, critical section lock contention (`GOMP_critical_start`), and parallel region overheads. |
+| **`cuda_sync_bubbles.bt`** | GPU Accelerated Computing | Host-side synchronization bubbles (`cudaStreamSynchronize`, `cudaDeviceSynchronize`, `cudaMemcpy`) causing GPU pipeline stalls. |
+| **`nccl_collective_skew.bt`** | Distributed AI (PyTorch FSDP/Megatron) | Multi-GPU collective communication tail latency (`ncclAllReduce`, `ncclReduceScatter`, `ncclAllGather`), tensor volumes, and rank skew. |
+
+### Running Presets:
+Presets are automatically discovered and can be referenced by relative path:
+```bash
+# Trace Lustre parallel checkpoint I/O:
+./bin/ubpftrace -c "python train_fsdp.py" presets/ai_checkpoint_lustre.bt
+
+# Trace NCCL collective skew across multi-GPU ranks:
+srun -N 2 -n 8 ./bin/ubpftrace -c "torchrun train.py" presets/nccl_collective_skew.bt
 ```
 
 ---
@@ -398,11 +691,24 @@ uretprobe:mpi:MPI_Allreduce /@allreduce_start[tid]/ {
 ubpftrace/
 ├── bin/
 │   ├── ubpftrace                      # Main CLI compiler & tracer executable
+│   ├── ubpftrace-cat                  # Standalone trace container decoder, merger & Chrome exporter
+│   ├── ubpftrace-top                  # Real-time cluster dashboard & JSON telemetry streamer
 │   ├── libbpftime-agent.so            # Userspace runtime agent (Frida-Gum + JIT)
-│   └── libbpftime-syscall-server.so   # Mock syscall server for libbpf
+│   ├── libbpftime-syscall-server.so   # Mock syscall server for libbpf
+│   └── test_hpc_shm_io                # Concurrency & zero-jitter SHM stress benchmark
 ├── bpftime/                           # Complete embedded bpftime runtime subsystem
+│   └── runtime/
+│       ├── include/hpc/               # HPC data plane headers (Lustre, SHM, Reducer, Live, Stream)
+│       └── src/hpc/                   # HPC data plane implementations
 ├── src/                               # bpftrace script compiler frontend (AST, LLVM IR, parser)
-├── examples/
+├── presets/                           # Production HPC & Distributed AI diagnostic presets
+│   ├── ai_checkpoint_lustre.bt        # Lustre OST parallel I/O profiler
+│   ├── mpi_straggler_detector.bt      # Multi-node MPI barrier & collective straggler analyzer
+│   ├── mpi_p2p_traffic.bt             # MPI point-to-point communication matrix
+│   ├── openmp_hybrid_contention.bt    # OpenMP barrier & critical section profiler
+│   ├── cuda_sync_bubbles.bt           # CUDA host-side synchronization stall tracker
+│   └── nccl_collective_skew.bt        # NCCL multi-GPU collective tail latency analyzer
+├── examples/                          # Ready-to-run interactive examples & sample applications
 │   ├── calc.bt                        # Traces user-defined calculate(int, int) function
 │   ├── puts.bt                        # Traces libc:puts string function
 │   ├── malloc.bt                      # Traces libc:malloc memory allocations & hist()

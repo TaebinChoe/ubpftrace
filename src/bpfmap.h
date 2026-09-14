@@ -68,6 +68,8 @@ public:
   const std::string &bpf_name() const;
   std::string name() const;
   uint32_t max_entries() const;
+  uint32_t key_size() const { return key_size_; }
+  uint32_t value_size() const { return value_size_; }
 
   bool is_stack_map() const;
   bool is_per_cpu_type() const;

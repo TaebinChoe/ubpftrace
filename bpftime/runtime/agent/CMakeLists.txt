@@ -59,7 +59,7 @@ if(${BPFTIME_BUILD_WITH_LIBBPF})
   target_link_libraries(bpftime-agent
     PUBLIC
     ${FRIDA_GUM_INSTALL_DIR}/libfrida-gum.a
-    runtime
+    -Wl,--whole-archive runtime ubpf_hpc_core -Wl,--no-whole-archive
     -lpthread
     -lm
     -ldl
@@ -82,7 +82,7 @@ else()
 	target_link_libraries(bpftime-agent
 		PUBLIC
 		${FRIDA_GUM_INSTALL_DIR}/libfrida-gum.a
-		runtime
+		-Wl,--whole-archive runtime ubpf_hpc_core -Wl,--no-whole-archive
 		-lpthread
     -lm
     -ldl

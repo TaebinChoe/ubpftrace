@@ -38,6 +38,11 @@ std::unordered_set<std::string> VOID_RETURNING_FUNCS = {
   "exit", "print",  "clear",  "zero",  "time",   "unwatch", "fail"
 };
 
+static SizedType CreateNodeName()
+{
+  return CreateString(64);
+}
+
 std::unordered_map<std::string, SizedType (*)()> SIMPLE_BUILTIN_TYPES = {
   { "pid", CreateUInt32 },
   { "tid", CreateUInt32 },
@@ -47,6 +52,14 @@ std::unordered_map<std::string, SizedType (*)()> SIMPLE_BUILTIN_TYPES = {
   { "__builtin_ncpus", CreateUInt64 },
   { "__builtin_usermode", CreateUInt8 },
   { "__builtin_cpid", CreateUInt64 },
+  { "rank", CreateUInt32 },
+  { "__builtin_rank", CreateUInt32 },
+  { "node", CreateUInt32 },
+  { "__builtin_node", CreateUInt32 },
+  { "local_rank", CreateUInt32 },
+  { "__builtin_local_rank", CreateUInt32 },
+  { "nodename", CreateNodeName },
+  { "__builtin_nodename", CreateNodeName },
 };
 
 std::unordered_map<std::string, SizedType (*)()> SIMPLE_CALL_TYPES = {
@@ -59,6 +72,16 @@ std::unordered_map<std::string, SizedType (*)()> SIMPLE_CALL_TYPES = {
   { "skboutput", CreateUInt32 },
   { "strncmp", CreateUInt64 },
   { "socket_cookie", CreateUInt64 },
+  { "rank", CreateUInt32 },
+  { "__builtin_rank", CreateUInt32 },
+  { "node", CreateUInt32 },
+  { "__builtin_node", CreateUInt32 },
+  { "local_rank", CreateUInt32 },
+  { "__builtin_local_rank", CreateUInt32 },
+  { "nodename", CreateNodeName },
+  { "__builtin_nodename", CreateNodeName },
+  { "lustre_ost", CreateInt32 },
+  { "__builtin_lustre_ost", CreateInt32 },
 };
 
 const std::unordered_map<Type, std::string_view> AGGREGATE_HINTS{

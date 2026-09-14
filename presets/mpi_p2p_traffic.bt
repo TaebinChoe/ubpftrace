@@ -1,0 +1,54 @@
+// ============================================================================
+// UBPFTRACE PRESET: mpi_p2p_traffic.bt
+// Scenario: MPI Point-to-Point Message Sizing & Traffic Volume Profiler
+//
+// Diagnoses:
+//  - Message size distribution (Eager vs. Rendezvous protocol transitions).
+//  - Per-rank Transmission (Tx) and Reception (Rx) volume imbalances.
+//  - Ratio of blocking synchronous vs. non-blocking asynchronous transfers.
+//
+// Usage:
+//  ubpftrace -c "examples/apps/hpc_app" presets/mpi_p2p_traffic.bt
+//  srun -N 4 -n 64 ubpftrace -c "./nek5000" presets/mpi_p2p_traffic.bt
+// ============================================================================
+
+uprobe:mpi:MPI_Send {
+    $count = arg1;
+    @tx_bytes[rank] = sum($count);
+    @msg_size_bytes["MPI_Send"] = hist($count);
+    @p2p_calls["MPI_Send"] = count();
+}
+
+uprobe:mpi:MPI_Isend {
+    $count = arg1;
+    @tx_bytes[rank] = sum($count);
+    @msg_size_bytes["MPI_Isend"] = hist($count);
+    @p2p_calls["MPI_Isend"] = count();
+}
+
+uprobe:mpi:MPI_Recv {
+    $count = arg1;
+    @rx_bytes[rank] = sum($count);
+    @msg_size_bytes["MPI_Recv"] = hist($count);
+    @p2p_calls["MPI_Recv"] = count();
+}
+
+uprobe:mpi:MPI_Irecv {
+    $count = arg1;
+    @rx_bytes[rank] = sum($count);
+    @msg_size_bytes["MPI_Irecv"] = hist($count);
+    @p2p_calls["MPI_Irecv"] = count();
+}
+
+uprobe:mpi:MPI_Sendrecv {
+    $sendcount = arg1;
+    @tx_bytes[rank] = sum($sendcount);
+    @msg_size_bytes["MPI_Sendrecv"] = hist($sendcount);
+    @p2p_calls["MPI_Sendrecv"] = count();
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("         MPI POINT-TO-POINT TRAFFIC & SIZING SUMMARY        \n");
+    printf("============================================================\n");
+}

@@ -15,6 +15,7 @@
 #include "symbols/kernel.h"
 #include "types_format.h"
 #include "version.h"
+#include "hpc/ubpf_agent_manager.hpp"
 
 using namespace bpftrace;
 

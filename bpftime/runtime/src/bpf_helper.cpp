@@ -6,6 +6,9 @@
 #include "bpf_attach_ctx.hpp"
 #include "handler/map_handler.hpp"
 #include "linux/bpf.h"
+#include "hpc/ubpf_topology.hpp"
+#include "hpc/ubpf_agent_manager.hpp"
+#include "hpc/ubpf_lustre.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <system_error>
@@ -76,13 +79,19 @@ uint64_t bpftime_trace_printk(uint64_t fmt, uint64_t fmt_size, ...)
 {
 	const char *fmt_str = (const char *)fmt;
 	va_list args;
+	char buf[1024];
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #pragma GCC diagnostic ignored "-Wvarargs"
 	va_start(args, fmt_str);
-	long ret = vprintf(fmt_str, args);
-#pragma GCC diagnostic pop
+	int n = vsnprintf(buf, sizeof(buf), fmt_str, args);
 	va_end(args);
+#pragma GCC diagnostic pop
+	if (n > 0) {
+		bpftime::hpc::ubpf_agent_manager::instance().log_event(
+			1, buf, static_cast<uint32_t>(n));
+		printf("%s", buf);
+	}
 	return 0;
 }
 
@@ -259,6 +268,40 @@ uint64_t bpftime_get_current_comm(uint64_t buf, uint64_t size, uint64_t,
 	return 0;
 }
 
+constexpr int BPF_FUNC_get_mpi_rank = 501;
+constexpr int BPF_FUNC_get_node_id = 502;
+constexpr int BPF_FUNC_get_local_rank = 503;
+constexpr int BPF_FUNC_get_nodename = 504;
+constexpr int BPF_FUNC_get_lustre_ost = 505;
+
+uint64_t bpftime_get_mpi_rank(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t)
+{
+	return bpftime::hpc::get_mpi_rank();
+}
+
+uint64_t bpftime_get_node_id(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t)
+{
+	return bpftime::hpc::get_node_id();
+}
+
+uint64_t bpftime_get_local_rank(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t)
+{
+	return bpftime::hpc::get_local_rank();
+}
+
+uint64_t bpftime_get_nodename(uint64_t buf, uint64_t size, uint64_t, uint64_t, uint64_t)
+{
+	if (!buf || size == 0)
+		return 1;
+	bpftime::hpc::get_nodename((char *)(uintptr_t)buf, (size_t)size);
+	return 0;
+}
+
+uint64_t bpftime_get_lustre_ost(uint64_t fd, uint64_t offset, uint64_t, uint64_t, uint64_t)
+{
+	return (uint64_t)(int64_t)bpftime::hpc::get_lustre_ost((int)fd, offset);
+}
+
 uint64_t bpftime_map_lookup_elem_helper(uint64_t map, uint64_t key, uint64_t,
 					uint64_t, uint64_t)
 {
@@ -400,6 +443,8 @@ uint64_t bpf_ringbuf_output(uint64_t rb, uint64_t data, uint64_t size,
 		SPDLOG_WARN(
 			"Currently only supports ringbuf_output with flags=0");
 	}
+	bpftime::hpc::ubpf_agent_manager::instance().log_event(
+		2, (const void *)(uintptr_t)data, static_cast<uint32_t>(size));
 	auto buf = bpftime_ringbuf_reserve(fd, size);
 	if (!buf) {
 		SPDLOG_ERROR("Failed to reserve when executing ringbuf output");
@@ -450,6 +495,8 @@ uint64_t bpf_ringbuf_discard(uint64_t data, uint64_t flags, uint64_t, uint64_t,
 uint64_t bpf_perf_event_output(uint64_t ctx, uint64_t map, uint64_t flags,
 			       uint64_t data, uint64_t size)
 {
+	bpftime::hpc::ubpf_agent_manager::instance().log_event(
+		3, (const void *)(uintptr_t)data, static_cast<uint32_t>(size));
 	int32_t current_cpu = my_sched_getcpu();
 	if (unlikely(current_cpu == -1)) {
 		SPDLOG_ERROR(
@@ -1285,7 +1332,32 @@ bpftime_helper_group::get_kernel_utils_helper_group()
 		  { BPF_FUNC_get_func_ip,
 		    bpftime_helper_info{ .index = BPF_FUNC_get_func_ip,
 					 .name = "bpf_get_func_ip",
-					 .fn = (void *)bpftime_get_func_ip } } }
+					 .fn = (void *)bpftime_get_func_ip } },
+		  { BPF_FUNC_get_mpi_rank,
+		    bpftime_helper_info{
+			    .index = BPF_FUNC_get_mpi_rank,
+			    .name = "bpf_get_mpi_rank",
+			    .fn = (void *)bpftime_get_mpi_rank } },
+		  { BPF_FUNC_get_node_id,
+		    bpftime_helper_info{
+			    .index = BPF_FUNC_get_node_id,
+			    .name = "bpf_get_node_id",
+			    .fn = (void *)bpftime_get_node_id } },
+		  { BPF_FUNC_get_local_rank,
+		    bpftime_helper_info{
+			    .index = BPF_FUNC_get_local_rank,
+			    .name = "bpf_get_local_rank",
+			    .fn = (void *)bpftime_get_local_rank } },
+		  { BPF_FUNC_get_nodename,
+		    bpftime_helper_info{
+			    .index = BPF_FUNC_get_nodename,
+			    .name = "bpf_get_nodename",
+			    .fn = (void *)bpftime_get_nodename } },
+		  { BPF_FUNC_get_lustre_ost,
+		    bpftime_helper_info{
+			    .index = BPF_FUNC_get_lustre_ost,
+			    .name = "bpf_get_lustre_ost",
+			    .fn = (void *)bpftime_get_lustre_ost } } }
 
 	};
 

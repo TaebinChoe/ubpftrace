@@ -54,6 +54,7 @@
 #include "util/strings.h"
 #include "util/system.h"
 #include "util/wildcard.h"
+#include <hpc/ubpf_live_exporter.hpp>
 
 using namespace std::chrono_literals;
 

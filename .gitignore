@@ -88,3 +88,17 @@ bpftime/**/*.a
 result
 result-*
 .direnv/
+
+# --- Sample Application Binaries ---
+examples/apps/alloc_app
+examples/apps/calc
+examples/apps/cuda_sync_app
+examples/apps/hpc_app
+examples/apps/lustre_io_app
+examples/apps/math_app
+examples/apps/mpi_p2p_app
+examples/apps/nccl_collective_app
+examples/apps/omp_app
+examples/apps/puts_app
+examples/apps/struct_app
+examples/apps/libnccl.so

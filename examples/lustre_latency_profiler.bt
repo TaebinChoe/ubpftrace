@@ -1,0 +1,25 @@
+// Lustre OST I/O Latency and Throughput Profiler
+// Tracks per-OST latency distribution and total throughput
+
+uprobe:/lib64/libc.so.6:pwrite64 {
+    @start[tid] = nsecs;
+    @write_fd[tid] = arg0;
+    @write_offset[tid] = arg3;
+    @write_bytes[tid] = arg2;
+}
+
+uretprobe:/lib64/libc.so.6:pwrite64 /@start[tid]/ {
+    $lat_us = (nsecs - @start[tid]) / 1000;
+    $fd = @write_fd[tid];
+    $offset = @write_offset[tid];
+    $bytes = @write_bytes[tid];
+    $ost = lustre_ost($fd, $offset);
+
+    @ost_latency_us[$ost] = hist($lat_us);
+    @ost_total_bytes[$ost] = sum($bytes);
+
+    delete(@start[tid]);
+    delete(@write_fd[tid]);
+    delete(@write_offset[tid]);
+    delete(@write_bytes[tid]);
+}

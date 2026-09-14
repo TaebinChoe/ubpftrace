@@ -808,6 +808,22 @@ ScopedExpr CodegenLLVM::visit(Builtin &builtin)
     return ScopedExpr(b_.CreateGetPid(builtin.loc, false));
   } else if (builtin.ident == "tid") {
     return ScopedExpr(b_.CreateGetTid(builtin.loc, false));
+  } else if (builtin.ident == "rank" || builtin.ident == "__builtin_rank") {
+    return ScopedExpr(b_.CreateGetMpiRank(builtin.loc));
+  } else if (builtin.ident == "node" || builtin.ident == "__builtin_node") {
+    return ScopedExpr(b_.CreateGetNodeId(builtin.loc));
+  } else if (builtin.ident == "local_rank" ||
+             builtin.ident == "__builtin_local_rank") {
+    return ScopedExpr(b_.CreateGetLocalRank(builtin.loc));
+  } else if (builtin.ident == "nodename" ||
+             builtin.ident == "__builtin_nodename") {
+    AllocaInst *buf = b_.CreateAllocaBPF(type_map_.type(&builtin),
+                                         "__builtin_nodename");
+    b_.CreateMemsetBPF(buf, b_.getInt8(0), type_map_.type(&builtin).GetSize());
+    b_.CreateGetNodename(buf,
+                         type_map_.type(&builtin).GetSize(),
+                         builtin.loc);
+    return ScopedExpr(buf, [this, buf]() { b_.CreateLifetimeEnd(buf); });
   } else if (builtin.ident == "__builtin_usermode") {
     if (arch::Host::Machine == arch::Machine::X86_64) {
       auto cs_offset = arch::Host::register_to_pt_regs_offset("cs");
@@ -2074,10 +2090,31 @@ ScopedExpr CodegenLLVM::visit(Call &call)
     bool force_init = shouldForceInitPidNs(call.vargs);
 
     return ScopedExpr(b_.CreateGetTid(call.loc, force_init));
+  } else if (call.func == "rank" || call.func == "__builtin_rank") {
+    return ScopedExpr(b_.CreateGetMpiRank(call.loc));
+  } else if (call.func == "node" || call.func == "__builtin_node") {
+    return ScopedExpr(b_.CreateGetNodeId(call.loc));
+  } else if (call.func == "local_rank" ||
+             call.func == "__builtin_local_rank") {
+    return ScopedExpr(b_.CreateGetLocalRank(call.loc));
+  } else if (call.func == "nodename" ||
+             call.func == "__builtin_nodename") {
+    AllocaInst *buf = b_.CreateAllocaBPF(type_map_.type(&call),
+                                         "__builtin_nodename");
+    b_.CreateMemsetBPF(buf, b_.getInt8(0), type_map_.type(&call).GetSize());
+    b_.CreateGetNodename(buf,
+                         type_map_.type(&call).GetSize(),
+                         call.loc);
+    return ScopedExpr(buf, [this, buf]() { b_.CreateLifetimeEnd(buf); });
   } else if (call.func == "socket_cookie") {
     auto scoped_arg = visit(call.vargs.at(0));
 
     return ScopedExpr(b_.CreateGetSocketCookie(scoped_arg.value(), call.loc));
+  } else if (call.func == "lustre_ost" ||
+             call.func == "__builtin_lustre_ost") {
+    auto scoped_fd = visit(call.vargs.at(0));
+    auto scoped_offset = visit(call.vargs.at(1));
+    return ScopedExpr(b_.CreateGetLustreOst(scoped_fd.value(), scoped_offset.value(), call.loc));
   } else {
     auto *func = extern_funcs_[call.func];
     if (!func) {

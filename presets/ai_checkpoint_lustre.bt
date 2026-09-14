@@ -1,0 +1,80 @@
+// ============================================================================
+// UBPFTRACE PRESET: ai_checkpoint_lustre.bt
+// Scenario: Distributed AI Checkpointing & Parallel File System I/O Profiler
+//
+// Diagnoses:
+//  - Write throughput and latency distribution per physical Lustre OST.
+//  - Degraded or congested OSTs causing checkpoint write stalls.
+//  - Time spent in storage commit/sync barriers (fsync / fdatasync).
+//
+// Usage:
+//  ubpftrace -c "python train_fsdp.py" presets/ai_checkpoint_lustre.bt
+//  srun -N 4 -n 16 ubpftrace -c "python train_fsdp.py" presets/ai_checkpoint_lustre.bt
+// ============================================================================
+
+uprobe:libc:pwrite64 {
+    @start_pwrite[tid] = nsecs;
+    @pwrite_fd[tid] = arg0;
+    @pwrite_bytes[tid] = arg2;
+    @pwrite_offset[tid] = arg3;
+}
+
+uretprobe:libc:pwrite64 /@start_pwrite[tid]/ {
+    $lat_us = (nsecs - @start_pwrite[tid]) / 1000;
+    $fd = @pwrite_fd[tid];
+    $offset = @pwrite_offset[tid];
+    $bytes = @pwrite_bytes[tid];
+    $ost = lustre_ost($fd, $offset);
+
+    if ($ost >= 0) {
+        @ost_write_bytes[$ost] = sum($bytes);
+        @ost_write_latency_us[$ost] = hist($lat_us);
+        @ost_write_ops[$ost] = count();
+    } else {
+        @non_lustre_write_bytes = sum($bytes);
+        @non_lustre_write_latency_us = hist($lat_us);
+    }
+
+    delete(@start_pwrite[tid]);
+    delete(@pwrite_fd[tid]);
+    delete(@pwrite_bytes[tid]);
+    delete(@pwrite_offset[tid]);
+}
+
+uprobe:libc:write {
+    @start_write[tid] = nsecs;
+    @write_bytes[tid] = arg2;
+}
+
+uretprobe:libc:write /@start_write[tid]/ {
+    $lat_us = (nsecs - @start_write[tid]) / 1000;
+    $bytes = @write_bytes[tid];
+
+    @stream_write_bytes = sum($bytes);
+    @stream_write_latency_us = hist($lat_us);
+
+    delete(@start_write[tid]);
+    delete(@write_bytes[tid]);
+}
+
+uprobe:libc:fsync,
+uprobe:libc:fdatasync {
+    @start_sync[tid] = nsecs;
+}
+
+uretprobe:libc:fsync,
+uretprobe:libc:fdatasync
+/@start_sync[tid]/ {
+    $lat_us = (nsecs - @start_sync[tid]) / 1000;
+    @fsync_latency_us = hist($lat_us);
+    @fsync_stats_us = stats($lat_us);
+    @fsync_count = count();
+
+    delete(@start_sync[tid]);
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("        AI CHECKPOINT & LUSTRE OST PROFILING SUMMARY        \n");
+    printf("============================================================\n");
+}

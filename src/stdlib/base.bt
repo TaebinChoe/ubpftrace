@@ -221,6 +221,36 @@ macro cpu()
   __builtin_cpu
 }
 
+// :variant uint32 rank()
+// Global MPI rank ID of the current process.
+//
+// Automatically discovered via Slurm/PMI/PMIx/OpenMPI environment.
+macro rank()
+{
+  __builtin_rank
+}
+
+// :variant uint32 node()
+// Physical compute node ID / index of the current process.
+macro node()
+{
+  __builtin_node
+}
+
+// :variant uint32 local_rank()
+// Node-local rank ID of the current process.
+macro local_rank()
+{
+  __builtin_local_rank
+}
+
+// :variant string nodename()
+// Hostname / nodename of the compute node.
+macro nodename()
+{
+  __builtin_nodename
+}
+
 // :variant uint64 curtask()
 // Pointer to `struct task_struct` of the current task
 //

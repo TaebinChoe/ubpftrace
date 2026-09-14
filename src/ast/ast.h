@@ -479,6 +479,14 @@ public:
            arg_num >= 0 && arg_num < 256;
   }
 
+  bool is_hpc_topology() const
+  {
+    return ident == "rank" || ident == "node" || ident == "local_rank" ||
+           ident == "nodename" || ident == "__builtin_rank" ||
+           ident == "__builtin_node" || ident == "__builtin_local_rank" ||
+           ident == "__builtin_nodename";
+  }
+
   bool operator==(const Builtin &other) const
   {
     return ident == other.ident && probe_id == other.probe_id;

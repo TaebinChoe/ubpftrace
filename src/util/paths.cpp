@@ -172,9 +172,29 @@ static std::vector<std::string> get_library_candidate_names(const std::string &n
     names.push_back("libcrypto.so");
   } else if (name == "mpi" || name == "libmpi") {
     names.push_back("libmpi.so");
+    names.push_back("libmpi_gnu.so");
+    names.push_back("libmpi_gnu.so.12");
+    names.push_back("libmpi_cray.so");
+    names.push_back("libmpi_nvidia.so");
     names.push_back("libmpi.so.40");
     names.push_back("libmpi.so.20");
     names.push_back("libmpi.so.12");
+    names.push_back("libmpich.so");
+  } else if (name == "cudart" || name == "libcudart") {
+    names.push_back("libcudart.so");
+    names.push_back("libcudart.so.12");
+    names.push_back("libcudart.so.11.0");
+    names.push_back("libcudart.so.11.7.60");
+  } else if (name == "cuda" || name == "libcuda") {
+    names.push_back("libcuda.so");
+    names.push_back("libcuda.so.1");
+  } else if (name == "nccl" || name == "libnccl") {
+    names.push_back("libnccl.so");
+    names.push_back("libnccl.so.2");
+  } else if (name == "gomp" || name == "libgomp" || name == "omp" || name == "libomp") {
+    names.push_back("libgomp.so.1");
+    names.push_back("libgomp.so");
+    names.push_back("libomp.so");
   } else {
     if (name.find(".so") == std::string::npos) {
       if (name.rfind("lib", 0) != 0) {
@@ -198,10 +218,26 @@ static std::vector<std::string> resolve_binary_path(const std::string &cmd,
   auto lib_names = get_library_candidate_names(cmd);
 
   static const std::vector<std::string> sys_lib_dirs = {
+    "/opt/cray/pe/lib64",
+    "/opt/cray/pe/gcc-libs",
+    "/opt/cray/libfabric/1.22.0/lib64",
+    "/usr/local/cuda/lib64",
+    "/usr/local/cuda/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/23.1/cuda/12.0/targets/x86_64-linux/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/22.7/cuda/11.7/targets/x86_64-linux/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/23.1/REDIST/cuda/12.0/targets/x86_64-linux/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/22.7/REDIST/cuda/11.7/targets/x86_64-linux/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/23.1/comm_libs/12.0/nccl/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/23.1/REDIST/comm_libs/12.0/nccl/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/22.7/comm_libs/11.7/nccl/lib",
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/22.7/REDIST/comm_libs/11.7/nccl/lib",
+    "/usr/local/nccl/lib",
     "/usr/lib/x86_64-linux-gnu/openmpi/lib",
     "/usr/lib/x86_64-linux-gnu/mpich/lib",
     "/usr/local/openmpi/lib",
     "/usr/local/mpich/lib",
+    "/usr/lib/shifter/mpich-2.2",
+    "/usr/lib/shifter/mpich-1.1",
     "/lib/x86_64-linux-gnu",
     "/usr/lib/x86_64-linux-gnu",
     "/lib64",
@@ -217,6 +253,21 @@ static std::vector<std::string> resolve_binary_path(const std::string &cmd,
         for (const auto &n : lib_names) {
           candidate_paths.push_back(path + "/" + n);
         }
+      }
+    }
+    const char *ld_lib_path = getenv("LD_LIBRARY_PATH");
+    if (ld_lib_path != nullptr) {
+      for (const auto &path : split_string(ld_lib_path, ':')) {
+        for (const auto &n : lib_names) {
+          candidate_paths.push_back(path + "/" + n);
+        }
+      }
+    }
+    const char *conda_prefix = getenv("CONDA_PREFIX");
+    if (conda_prefix != nullptr) {
+      std::string conda_lib = std::string(conda_prefix) + "/lib";
+      for (const auto &n : lib_names) {
+        candidate_paths.push_back(conda_lib + "/" + n);
       }
     }
     for (const auto &dir : sys_lib_dirs) {

@@ -10,6 +10,7 @@
 #include "types_format.h"
 #include "util/exceptions.h"
 #include "util/system.h"
+#include "hpc/ubpf_agent_manager.hpp"
 
 namespace bpftrace::async_action {
 
@@ -263,7 +264,10 @@ Result<> AsyncHandlers::printf(const OpaqueValue &data)
     return OK();
   }
 
-  out->printf(fmt.format(*vals), source_info, severity);
+  std::string formatted_msg = fmt.format(*vals);
+  out->printf(formatted_msg, source_info, severity);
+  bpftime::hpc::ubpf_agent_manager::instance().log_event(
+      1, formatted_msg.data(), static_cast<uint32_t>(formatted_msg.size()));
   return OK();
 }
 

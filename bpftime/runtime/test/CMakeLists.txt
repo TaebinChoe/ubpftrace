@@ -9,20 +9,7 @@ project(
 )
 
 set(test_sources
-
-  # probe tests
-  # src/test_attach_replace.cpp
-
-  # ufunc tests
-  # src/test_ufunc_register.cpp
-
-  # src/test_shm_hash_maps.cpp
-  # src/test_shm_progs_attach.cpp
-
-  # src/test_shm_client.cpp
-  # src/test_shm_server.cpp
-  # src/test_ufunc.cpp
-  # src/test_helpers.cpp
+  src/test_hpc_shm_io.cpp
 )
 
 message(DEBUG "Adding tests under ${CMAKE_PROJECT_NAME}Tests...")
@@ -43,6 +30,8 @@ foreach(file ${test_sources})
   target_link_libraries(
     ${test_name}_Tests PRIVATE
     -lm
+    -llz4
+    -lpthread
   )
 
   if(NOT BPFTIME_ENABLE_ASAN)

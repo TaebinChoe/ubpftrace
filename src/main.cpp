@@ -106,6 +106,12 @@ enum Options {
   VERIFY_LLVM_IR,
   VERSION,
   WARNINGS,
+  LIVE,
+  LIVE_MS,
+  LIVE_DIR,
+  STREAM,
+  STREAM_FLUSH_MS,
+  STREAM_BUFFER_KB,
 };
 
 constexpr auto FULL_SEARCH = "*:*";
@@ -161,6 +167,14 @@ void usage(std::ostream& out)
   out << "    --unsafe       allow unsafe/destructive functionality" << std::endl;
   out << "    --no-feature FEATURE[,FEATURE]" << std::endl;
   out << "                   disable use of detected features" << std::endl;
+  out << std::endl;
+  out << "REAL-TIME & MONITORING OPTIONS:" << std::endl;
+  out << "    -L, --live SEC interval (in seconds) for periodic Scenario A metric snapshotting" << std::endl;
+  out << "    --live-ms MS   sub-second interval (in ms) for rapid metric snapshotting" << std::endl;
+  out << "    --live-dir DIR output directory for out-of-band JSON metric snapshots" << std::endl;
+  out << "    --stream       enable low-latency micro-buffered live stdout event streaming" << std::endl;
+  out << "    --stream-flush-ms MS  flush timeout in ms (default: 20ms)" << std::endl;
+  out << "    --stream-buffer-kb KB buffer threshold in KB (default: 8KB)" << std::endl;
   out << std::endl;
   out << "DEVELOPER OPTIONS:" << std::endl;
   out << "    --mode MODE    used for benchmarking and testing" << std::endl;
@@ -426,7 +440,7 @@ Args parse_args(int argc, char* argv[])
 {
   Args args;
 
-  const char* const short_options = "d:bB:f:e:hlp:vqc:Vo:I:k";
+  const char* const short_options = "d:bB:f:e:hlp:vqc:Vo:I:kL:";
   option long_options[] = {
     option{ .name = "aot",
             .has_arg = required_argument,
@@ -548,6 +562,30 @@ Args parse_args(int argc, char* argv[])
             .has_arg = required_argument,
             .flag = nullptr,
             .val = Options::TRACEABLE_FUNCTIONS },
+    option{ .name = "live",
+            .has_arg = required_argument,
+            .flag = nullptr,
+            .val = Options::LIVE },
+    option{ .name = "live-ms",
+            .has_arg = required_argument,
+            .flag = nullptr,
+            .val = Options::LIVE_MS },
+    option{ .name = "live-dir",
+            .has_arg = required_argument,
+            .flag = nullptr,
+            .val = Options::LIVE_DIR },
+    option{ .name = "stream",
+            .has_arg = no_argument,
+            .flag = nullptr,
+            .val = Options::STREAM },
+    option{ .name = "stream-flush-ms",
+            .has_arg = required_argument,
+            .flag = nullptr,
+            .val = Options::STREAM_FLUSH_MS },
+    option{ .name = "stream-buffer-kb",
+            .has_arg = required_argument,
+            .flag = nullptr,
+            .val = Options::STREAM_BUFFER_KB },
     option{ .name = nullptr, .has_arg = 0, .flag = nullptr, .val = 0 }, // Must
                                                                         // be
                                                                         // last
@@ -731,6 +769,33 @@ Args parse_args(int argc, char* argv[])
       case Options::TRACEABLE_FUNCTIONS:
         args.traceable_functions_file = optarg;
         break;
+      case 'L':
+      case Options::LIVE: {
+        auto val = std::strtoull(optarg, nullptr, 10);
+        setenv("UBPFTRACE_LIVE_INTERVAL_SEC", optarg, 1);
+        setenv("UBPFTRACE_LIVE_INTERVAL_MS", std::to_string(val * 1000ULL).c_str(), 1);
+        break;
+      }
+      case Options::LIVE_MS: {
+        setenv("UBPFTRACE_LIVE_INTERVAL_MS", optarg, 1);
+        break;
+      }
+      case Options::LIVE_DIR: {
+        setenv("UBPFTRACE_LIVE_DIR", optarg, 1);
+        break;
+      }
+      case Options::STREAM: {
+        setenv("UBPFTRACE_STREAM", "1", 1);
+        break;
+      }
+      case Options::STREAM_FLUSH_MS: {
+        setenv("UBPFTRACE_STREAM_FLUSH_MS", optarg, 1);
+        break;
+      }
+      case Options::STREAM_BUFFER_KB: {
+        setenv("UBPFTRACE_STREAM_BUFFER_KB", optarg, 1);
+        break;
+      }
       default:
         usage(std::cerr);
         exit(1);
@@ -892,6 +957,19 @@ uint64_t parse_pid(std::string const& pid_str)
 
 int main(int argc, char* argv[])
 {
+  if (!getenv("BPFTIME_GLOBAL_SHM_NAME")) {
+    std::string shm_name = "bpftime_maps_shm_" + std::to_string(getpid());
+    const char *procid = getenv("SLURM_PROCID");
+    if (!procid) procid = getenv("PMI_RANK");
+    if (!procid) procid = getenv("OMPI_COMM_WORLD_RANK");
+    if (procid) {
+      const char *jobid = getenv("SLURM_JOB_ID");
+      std::string jid = jobid ? jobid : "0";
+      shm_name = "bpftime_maps_shm_" + jid + "_" + procid;
+    }
+    setenv("BPFTIME_GLOBAL_SHM_NAME", shm_name.c_str(), 1);
+  }
+
   // Self-bootstrap: ensure libbpftime-syscall-server.so is loaded to intercept BPF syscalls
   const char *server_active = getenv("BPFTIME_SYSCALL_SERVER_ACTIVE");
   if (!server_active) {

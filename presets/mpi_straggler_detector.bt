@@ -1,0 +1,79 @@
+// ============================================================================
+// UBPFTRACE PRESET: mpi_straggler_detector.bt
+// Scenario: HPC Simulation Collective Barrier & Straggler Profiler
+//
+// Diagnoses:
+//  - Computational load imbalance across MPI ranks in scientific simulations.
+//  - Barrier and collective reduction tail latency distributions.
+//  - Time ranks spend waiting on non-blocking async requests (MPI_Waitall).
+//
+// Usage:
+//  ubpftrace -c "examples/apps/hpc_app" presets/mpi_straggler_detector.bt
+//  srun -N 4 -n 64 ubpftrace -c "./nek5000" presets/mpi_straggler_detector.bt
+// ============================================================================
+
+uprobe:mpi:MPI_Barrier {
+    @start_barrier[tid] = nsecs;
+}
+
+uretprobe:mpi:MPI_Barrier /@start_barrier[tid]/ {
+    $dur_us = (nsecs - @start_barrier[tid]) / 1000;
+    @barrier_wait_us[rank] = hist($dur_us);
+    @barrier_stats_us[rank] = stats($dur_us);
+    @total_barrier_time_us = sum($dur_us);
+    @barrier_calls[rank] = count();
+
+    delete(@start_barrier[tid]);
+}
+
+uprobe:mpi:MPI_Allreduce {
+    @start_allreduce[tid] = nsecs;
+    @allreduce_elements[tid] = arg2;
+}
+
+uretprobe:mpi:MPI_Allreduce /@start_allreduce[tid]/ {
+    $dur_us = (nsecs - @start_allreduce[tid]) / 1000;
+    $count = @allreduce_elements[tid];
+
+    @allreduce_latency_us[rank] = hist($dur_us);
+    @allreduce_stats_us[rank] = stats($dur_us);
+    @total_allreduce_time_us = sum($dur_us);
+    @allreduce_calls[rank] = count();
+
+    delete(@start_allreduce[tid]);
+    delete(@allreduce_elements[tid]);
+}
+
+uprobe:mpi:MPI_Alltoall {
+    @start_alltoall[tid] = nsecs;
+}
+
+uretprobe:mpi:MPI_Alltoall /@start_alltoall[tid]/ {
+    $dur_us = (nsecs - @start_alltoall[tid]) / 1000;
+    @alltoall_latency_us[rank] = hist($dur_us);
+    @alltoall_stats_us[rank] = stats($dur_us);
+    @total_alltoall_time_us = sum($dur_us);
+    @alltoall_calls[rank] = count();
+
+    delete(@start_alltoall[tid]);
+}
+
+uprobe:mpi:MPI_Waitall {
+    @start_waitall[tid] = nsecs;
+}
+
+uretprobe:mpi:MPI_Waitall /@start_waitall[tid]/ {
+    $dur_us = (nsecs - @start_waitall[tid]) / 1000;
+    @waitall_latency_us[rank] = hist($dur_us);
+    @waitall_stats_us[rank] = stats($dur_us);
+    @total_waitall_time_us = sum($dur_us);
+    @waitall_calls[rank] = count();
+
+    delete(@start_waitall[tid]);
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("        MPI SIMULATION COLLECTIVE & STRAGGLER SUMMARY       \n");
+    printf("============================================================\n");
+}

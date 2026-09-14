@@ -44,6 +44,10 @@ endif()
 #
 find_package(Boost REQUIRED)
 
+if(EXISTS "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3/include")
+  include_directories(SYSTEM /opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3/include)
+endif()
+
 # Find all headers and implementation files
 if(NOT DEFINED ARCH)
   set(ARCH ${CMAKE_SYSTEM_PROCESSOR})
@@ -120,10 +124,33 @@ message(INFO " Found the following sources: ${sources}")
 # Keep constructor-based self-registration; do not add centralized registry
 
 add_library(
+  ubpf_hpc_core STATIC
+  src/hpc/ubpf_topology.cpp
+  src/hpc/ubpf_shm_buffer.cpp
+  src/hpc/ubpf_container_writer.cpp
+  src/hpc/ubpf_async_io_worker.cpp
+  src/hpc/ubpf_live_exporter.cpp
+  src/hpc/ubpf_micro_streamer.cpp
+  src/hpc/ubpf_agent_manager.cpp
+  src/hpc/ubpf_mpi_reducer.cpp
+  src/hpc/ubpf_lustre.cpp
+)
+set_property(TARGET ubpf_hpc_core PROPERTY CXX_STANDARD 20)
+target_include_directories(ubpf_hpc_core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
+  ${CMAKE_CURRENT_SOURCE_DIR}/../vm/vm-core/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/../vm/compat/include
+)
+target_link_libraries(ubpf_hpc_core PUBLIC lz4 pthread rt spdlog::spdlog)
+
+add_library(
   ${PROJECT_NAME}
   ${sources}
 )
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
+target_link_libraries(${PROJECT_NAME} PUBLIC ubpf_hpc_core)
 if(${BPFTIME_LLVM_JIT})
   target_compile_definitions(${PROJECT_NAME} PUBLIC BPFTIME_LLVM_JIT=1)
 endif()
@@ -239,6 +266,7 @@ if(${BPFTIME_BUILD_WITH_LIBBPF})
     -ldl
     -lz
     -lelf
+    -llz4
     bpftime_base_attach_impl
     ${EXTRA_LIBS}
   )
@@ -250,6 +278,7 @@ else()
     -lm
     -ldl
     -lz
+    -llz4
     bpftime_base_attach_impl
     ${EXTRA_LIBS}
   )
@@ -287,6 +316,19 @@ endif()
 
 add_subdirectory(agent)
 add_subdirectory(syscall-server)
+
+add_executable(test_hpc_shm_io test/src/test_hpc_shm_io.cpp)
+target_include_directories(test_hpc_shm_io PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
+)
+target_link_libraries(test_hpc_shm_io PRIVATE
+  ${PROJECT_NAME}
+  -llz4
+  -lpthread
+  -lrt
+)
 
 #
 # Unit testing setup

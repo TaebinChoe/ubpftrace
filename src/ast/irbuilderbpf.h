@@ -195,6 +195,11 @@ public:
                             bool packed = false);
   Value *CreateGetPid(const Location &loc, bool force_init);
   Value *CreateGetTid(const Location &loc, bool force_init);
+  Value *CreateGetMpiRank(const Location &loc);
+  Value *CreateGetNodeId(const Location &loc);
+  Value *CreateGetLocalRank(const Location &loc);
+  void CreateGetNodename(AllocaInst *buf, size_t size, const Location &loc);
+  Value *CreateGetLustreOst(Value *fd, Value *offset, const Location &loc);
   AllocaInst *CreateUSym(Value *val, int probe_id, const Location &loc);
   Value *CreateRegisterRead(Value *ctx, const std::string &builtin);
   Value *CreateRegisterRead(Value *ctx, size_t offset, const std::string &name);

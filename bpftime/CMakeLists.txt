@@ -98,6 +98,9 @@ if(${BPFTIME_BUILD_WITH_LIBBPF})
   add_definitions(-DBPFTIME_BUILD_WITH_LIBBPF=1)
 endif()
 
+find_package(Boost REQUIRED)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+
 if(UNIX)
   add_compile_options("$<$<CONFIG:DEBUG>:-D_DEBUG>") # this will allow to use same _DEBUG macro available in both Linux as well as Windows - MSCV environment. Easy to put Debug specific code.
 endif(UNIX)
