@@ -102,3 +102,4 @@ examples/apps/omp_app
 examples/apps/puts_app
 examples/apps/struct_app
 examples/apps/libnccl.so
+*.dat

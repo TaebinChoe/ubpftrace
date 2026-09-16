@@ -8,8 +8,8 @@
 
 void simulate_computation(int rank, int iter)
 {
-    // Simulate load imbalance (Rank 0 does 3x more work than others)
-    int compute_delay_us = (rank == 0) ? 60000 : 20000;
+    // Simulate load imbalance (Rank 0 is a straggler doing 5x more work)
+    int compute_delay_us = (rank == 0) ? 10000 : 2000;
     usleep(compute_delay_us);
 }
 
@@ -34,21 +34,18 @@ int main(int argc, char **argv)
     double global_sum = 0.0;
 
     for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-        // 1. Point-to-Point Communication (Halo / Neighbor Exchange)
+        // 1. Non-blocking Point-to-Point Halo Exchange (Deadlock-Free)
         if (size > 1) {
             int next = (rank + 1) % size;
             int prev = (rank - 1 + size) % size;
+            MPI_Request reqs[2];
 
-            if (rank % 2 == 0) {
-                MPI_Send(send_buf, MSG_ELEMENTS, MPI_INT, next, 0, MPI_COMM_WORLD);
-                MPI_Recv(recv_buf, MSG_ELEMENTS, MPI_INT, prev, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            } else {
-                MPI_Recv(recv_buf, MSG_ELEMENTS, MPI_INT, prev, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                MPI_Send(send_buf, MSG_ELEMENTS, MPI_INT, next, 0, MPI_COMM_WORLD);
-            }
+            MPI_Irecv(recv_buf, MSG_ELEMENTS, MPI_INT, prev, 100 + iter, MPI_COMM_WORLD, &reqs[0]);
+            MPI_Isend(send_buf, MSG_ELEMENTS, MPI_INT, next, 100 + iter, MPI_COMM_WORLD, &reqs[1]);
+            MPI_Waitall(2, reqs, MPI_STATUSES_IGNORE);
         } else {
             // Self-exchange test for single process execution
-            MPI_Sendrecv(send_buf, 256, MPI_INT, 0, 0, recv_buf, 256, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Sendrecv(send_buf, 256, MPI_INT, 0, 100 + iter, recv_buf, 256, MPI_INT, 0, 100 + iter, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
 
         // 2. Unbalanced Computation Phase (Straggler generation)
@@ -63,10 +60,12 @@ int main(int argc, char **argv)
     }
 
     printf("[Rank %d/%d] Completed iterations. Global sum: %.2f\n", rank, size, global_sum);
+    fflush(stdout);
 
     free(send_buf);
     free(recv_buf);
 
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     return 0;
 }

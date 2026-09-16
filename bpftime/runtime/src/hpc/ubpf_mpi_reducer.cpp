@@ -21,7 +21,7 @@ typedef int MPI_Op;
 #define MPI_SUCCESS 0
 #define MPI_INT ((MPI_Datatype)0x4c000105)
 #define MPI_BYTE ((MPI_Datatype)0x4c00010d)
-#define MPI_UINT64_T ((MPI_Datatype)0x4c000854)
+#define MPI_UINT64_T ((MPI_Datatype)0x4c00083e)
 #define MPI_SUM ((MPI_Op)0x58000003)
 #endif
 
@@ -55,31 +55,37 @@ void resolve_mpi_symbols() {
     if (resolved) return;
     resolved = true;
 
-    real_mpi_init = (mpi_init_fn)dlsym(RTLD_NEXT, "MPI_Init");
-    if (!real_mpi_init) real_mpi_init = (mpi_init_fn)dlsym(RTLD_DEFAULT, "PMPI_Init");
+    real_mpi_init = (mpi_init_fn)dlsym(RTLD_NEXT, "PMPI_Init");
+    if (!real_mpi_init) real_mpi_init = (mpi_init_fn)dlsym(RTLD_NEXT, "MPI_Init");
 
-    real_mpi_init_thread = (mpi_init_thread_fn)dlsym(RTLD_NEXT, "MPI_Init_thread");
-    if (!real_mpi_init_thread) real_mpi_init_thread = (mpi_init_thread_fn)dlsym(RTLD_DEFAULT, "PMPI_Init_thread");
+    real_mpi_init_thread = (mpi_init_thread_fn)dlsym(RTLD_NEXT, "PMPI_Init_thread");
+    if (!real_mpi_init_thread) real_mpi_init_thread = (mpi_init_thread_fn)dlsym(RTLD_NEXT, "MPI_Init_thread");
 
-    real_mpi_finalize = (mpi_finalize_fn)dlsym(RTLD_NEXT, "MPI_Finalize");
-    if (!real_mpi_finalize) real_mpi_finalize = (mpi_finalize_fn)dlsym(RTLD_DEFAULT, "PMPI_Finalize");
+    real_mpi_finalize = (mpi_finalize_fn)dlsym(RTLD_NEXT, "PMPI_Finalize");
+    if (!real_mpi_finalize) real_mpi_finalize = (mpi_finalize_fn)dlsym(RTLD_NEXT, "MPI_Finalize");
 
-    real_mpi_comm_dup = (mpi_comm_dup_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_dup");
+    real_mpi_comm_dup = (mpi_comm_dup_fn)dlsym(RTLD_NEXT, "PMPI_Comm_dup");
+    if (!real_mpi_comm_dup) real_mpi_comm_dup = (mpi_comm_dup_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_dup");
     if (!real_mpi_comm_dup) real_mpi_comm_dup = (mpi_comm_dup_fn)dlsym(RTLD_DEFAULT, "MPI_Comm_dup");
 
-    real_mpi_comm_free = (mpi_comm_free_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_free");
+    real_mpi_comm_free = (mpi_comm_free_fn)dlsym(RTLD_NEXT, "PMPI_Comm_free");
+    if (!real_mpi_comm_free) real_mpi_comm_free = (mpi_comm_free_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_free");
     if (!real_mpi_comm_free) real_mpi_comm_free = (mpi_comm_free_fn)dlsym(RTLD_DEFAULT, "MPI_Comm_free");
 
-    real_mpi_comm_rank = (mpi_comm_rank_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_rank");
+    real_mpi_comm_rank = (mpi_comm_rank_fn)dlsym(RTLD_NEXT, "PMPI_Comm_rank");
+    if (!real_mpi_comm_rank) real_mpi_comm_rank = (mpi_comm_rank_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_rank");
     if (!real_mpi_comm_rank) real_mpi_comm_rank = (mpi_comm_rank_fn)dlsym(RTLD_DEFAULT, "MPI_Comm_rank");
 
-    real_mpi_comm_size = (mpi_comm_size_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_size");
+    real_mpi_comm_size = (mpi_comm_size_fn)dlsym(RTLD_NEXT, "PMPI_Comm_size");
+    if (!real_mpi_comm_size) real_mpi_comm_size = (mpi_comm_size_fn)dlsym(RTLD_DEFAULT, "PMPI_Comm_size");
     if (!real_mpi_comm_size) real_mpi_comm_size = (mpi_comm_size_fn)dlsym(RTLD_DEFAULT, "MPI_Comm_size");
 
-    real_mpi_reduce = (mpi_reduce_fn)dlsym(RTLD_DEFAULT, "PMPI_Reduce");
+    real_mpi_reduce = (mpi_reduce_fn)dlsym(RTLD_NEXT, "PMPI_Reduce");
+    if (!real_mpi_reduce) real_mpi_reduce = (mpi_reduce_fn)dlsym(RTLD_DEFAULT, "PMPI_Reduce");
     if (!real_mpi_reduce) real_mpi_reduce = (mpi_reduce_fn)dlsym(RTLD_DEFAULT, "MPI_Reduce");
 
-    real_mpi_gather = (mpi_gather_fn)dlsym(RTLD_DEFAULT, "PMPI_Gather");
+    real_mpi_gather = (mpi_gather_fn)dlsym(RTLD_NEXT, "PMPI_Gather");
+    if (!real_mpi_gather) real_mpi_gather = (mpi_gather_fn)dlsym(RTLD_DEFAULT, "PMPI_Gather");
     if (!real_mpi_gather) real_mpi_gather = (mpi_gather_fn)dlsym(RTLD_DEFAULT, "MPI_Gather");
 }
 
@@ -96,8 +102,9 @@ void ubpf_mpi_reducer::on_mpi_init() {
     // 1. Initialize node-local SHM tracing engine
     ubpf_agent_manager::instance().init();
 
-    // 2. Duplicate MPI_COMM_WORLD into isolated private communicator
-    if (real_mpi_comm_dup) {
+    // 2. Only duplicate communicator if cluster reduction is requested
+    const char *enable_reduce = std::getenv("UBPFTRACE_ENABLE_MPI_REDUCE");
+    if (enable_reduce && std::string(enable_reduce) == "1" && real_mpi_comm_dup) {
         MPI_Comm private_comm;
         int ret = real_mpi_comm_dup(MPI_COMM_WORLD, &private_comm);
         if (ret == MPI_SUCCESS) {
@@ -133,7 +140,7 @@ void ubpf_mpi_reducer::on_mpi_finalize() {
     // Flush local node SHM buffer & finalize node container
     mgr.shutdown();
 
-    // 2. Perform cluster-wide reduction over isolated communicator
+    // 2. Perform cluster-wide reduction over isolated communicator if enabled
     if (mpi_initialized_ && private_comm_ != 0 && real_mpi_reduce) {
         MPI_Comm comm = static_cast<MPI_Comm>(private_comm_);
 
@@ -202,32 +209,6 @@ void ubpf_mpi_reducer::on_mpi_finalize() {
             real_mpi_comm_free(&comm);
             private_comm_ = 0;
         }
-    } else if (world_rank_ == 0) {
-        // Single process fallback summary
-        std::string out_dir = ".";
-        if (const char *env_dir = std::getenv("UBPFTRACE_OUTPUT_DIR")) {
-            out_dir = env_dir;
-        } else if (const char *scratch = std::getenv("SCRATCH")) {
-            out_dir = scratch;
-        }
-
-        std::string summary_path = out_dir + "/ubpftrace_" +
-                                  std::to_string(job_id) + "_summary.json";
-
-        std::ofstream out(summary_path);
-        if (out.is_open()) {
-            out << "{\n"
-                << "  \"job_id\": " << job_id << ",\n"
-                << "  \"total_ranks\": 1,\n"
-                << "  \"total_recorded_events\": " << local_recorded << ",\n"
-                << "  \"total_dropped_events\": " << local_dropped << ",\n"
-                << "  \"per_rank_stats\": [\n"
-                << "    {\"rank\": 0, \"node_id\": " << node_id
-                << ", \"recorded\": " << local_recorded
-                << ", \"dropped\": " << local_dropped << "}\n"
-                << "  ]\n}\n";
-            out.close();
-        }
     }
 }
 
@@ -275,21 +256,6 @@ int MPI_Finalize() {
         ret = bpftime::hpc::real_mpi_finalize();
     }
     return ret;
-}
-
-__attribute__((visibility("default")))
-int PMPI_Init(int *argc, char ***argv) {
-    return MPI_Init(argc, argv);
-}
-
-__attribute__((visibility("default")))
-int PMPI_Init_thread(int *argc, char ***argv, int required, int *provided) {
-    return MPI_Init_thread(argc, argv, required, provided);
-}
-
-__attribute__((visibility("default")))
-int PMPI_Finalize() {
-    return MPI_Finalize();
 }
 
 } // extern "C"

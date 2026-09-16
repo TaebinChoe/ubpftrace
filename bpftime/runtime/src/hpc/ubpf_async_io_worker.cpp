@@ -174,17 +174,16 @@ void ubpf_async_io_worker::swap_and_flush(bool force) {
     uint64_t next_val = (static_cast<uint64_t>(next_epoch) << 32) | next_idx;
     shm_->active_epoch_buffer.store(next_val, std::memory_order_release);
 
-    // 2. Hazard drain wait: Spin until all writers observing the previous epoch have committed
+    // 2. Hazard drain wait: Spin with bounded timeout until writers commit (max 50ms)
     int spin_count = 0;
-    while (buf->active_writers.load(std::memory_order_acquire) > 0) {
+    while (buf->active_writers.load(std::memory_order_acquire) > 0 && spin_count < 500) {
 #if defined(__x86_64__) || defined(_M_X64)
         _mm_pause();
 #elif defined(__aarch64__)
         asm volatile("yield" ::: "memory");
 #endif
-        if (++spin_count > 1000000) {
-            usleep(100);
-        }
+        usleep(100);
+        ++spin_count;
     }
 
     // 3. Read total uncompressed bytes written
