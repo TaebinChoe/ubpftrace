@@ -37,7 +37,7 @@ int main() {
         usleep(2000);
 
         // 2. cudaStreamSynchronize
-        cudaStreamSynchronize((cudaStream_t)(uintptr_t)(iter + 1));
+        cudaStreamSynchronize(NULL);
         usleep(3000);
 
         // 3. cudaDeviceSynchronize
@@ -45,7 +45,7 @@ int main() {
         usleep(1000);
 
         // 4. cudaEventSynchronize
-        cudaEventSynchronize((cudaEvent_t)(uintptr_t)(iter + 100));
+        cudaEventSynchronize(NULL);
         usleep(1500);
     }
 

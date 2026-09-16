@@ -218,9 +218,12 @@ static std::vector<std::string> resolve_binary_path(const std::string &cmd,
   auto lib_names = get_library_candidate_names(cmd);
 
   static const std::vector<std::string> sys_lib_dirs = {
+    "/usr/lib64",
+    "/lib64",
+    "/usr/lib",
+    "/lib",
+    "/usr/local/lib",
     "/opt/cray/pe/lib64",
-    "/opt/cray/pe/gcc-libs",
-    "/opt/cray/libfabric/1.22.0/lib64",
     "/usr/local/cuda/lib64",
     "/usr/local/cuda/lib",
     "/opt/nvidia/hpc_sdk/Linux_x86_64/23.1/cuda/12.0/targets/x86_64-linux/lib",
@@ -238,13 +241,10 @@ static std::vector<std::string> resolve_binary_path(const std::string &cmd,
     "/usr/local/mpich/lib",
     "/usr/lib/shifter/mpich-2.2",
     "/usr/lib/shifter/mpich-1.1",
+    "/opt/cray/pe/gcc-libs",
+    "/opt/cray/libfabric/1.22.0/lib64",
     "/lib/x86_64-linux-gnu",
-    "/usr/lib/x86_64-linux-gnu",
-    "/lib64",
-    "/usr/lib64",
-    "/lib",
-    "/usr/lib",
-    "/usr/local/lib"
+    "/usr/lib/x86_64-linux-gnu"
   };
 
   if (cmd.find("/") == std::string::npos) {
