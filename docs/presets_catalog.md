@@ -1,6 +1,6 @@
-# Flagship Production Presets Catalog
+# Tracing Presets Catalog
 
-`ubpftrace` includes six pre-built, production-validated tracing presets located in the [`presets/`](file:///pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/presets/) directory. These scripts target the most critical performance bottlenecks in Large-Scale HPC, Distributed AI / LLM Training, Parallel File Systems (Lustre), and Multi-GPU Computing.
+`ubpftrace` includes six pre-built tracing presets located in the [`presets/`](file:///pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/presets/) directory. These scripts target common performance bottlenecks in HPC simulations, Distributed AI / LLM Training, Parallel File Systems (Lustre), and Multi-GPU Computing.
 
 ---
 
@@ -20,7 +20,7 @@
 ## 1. `ai_checkpoint_lustre.bt`: AI Checkpoint & Lustre OST Profiler
 
 ### Target Use Case
-Large-scale PyTorch/Megatron-LM model checkpointing (saving multi-gigabyte state dictionaries) and high-throughput parallel I/O. Intercepts POSIX I/O calls, dynamically extracts the Lustre Object Storage Target (OST) index using the `lustre_ost(fd, offset)` helper, and profiles per-OST bandwidth and latency distributions.
+PyTorch / Megatron-LM model checkpointing and high-throughput parallel I/O. Intercepts POSIX I/O calls, dynamically extracts the Lustre Object Storage Target (OST) index using the `lustre_ost(fd, offset)` helper, and profiles per-OST bandwidth and latency distributions.
 
 ### Intercepted Probes
 - `uprobe:libc:pwrite64`, `uretprobe:libc:pwrite64`
@@ -32,11 +32,11 @@ Large-scale PyTorch/Megatron-LM model checkpointing (saving multi-gigabyte state
 # Standalone execution on example application
 ./bin/ubpftrace -c "./examples/apps/lustre_io_app" presets/ai_checkpoint_lustre.bt
 
-# Multi-node production execution across 16 ranks (2 nodes x 8 ranks)
+# Multi-node execution across 16 ranks (2 nodes x 8 ranks)
 srun -N 2 -n 16 -l ./bin/ubpftrace -c ./examples/apps/lustre_io_app presets/ai_checkpoint_lustre.bt
 ```
 
-### Production Scale Multi-Node Output (16 Ranks on 2 Nodes)
+### Multi-Node Execution Output (16 Ranks on 2 Nodes)
 ```text
  0: Attached 9 probes
  1: Attached 9 probes
@@ -79,7 +79,7 @@ srun -N 2 -n 16 -l ./bin/ubpftrace -c ./examples/apps/lustre_io_app presets/ai_c
 ## 2. `mpi_straggler_detector.bt`: MPI Collective Straggler & Barrier Imbalance
 
 ### Target Use Case
-Identifies ranks that arrive late to global collectives (`MPI_Barrier`, `MPI_Allreduce`, `MPI_Alltoall`, `MPI_Waitall`), causing all other ranks in the communicator to stall idle. Generates per-rank execution counts, latency log-histograms, and exact summary statistics.
+Identifies ranks that arrive late to global collectives (`MPI_Barrier`, `MPI_Allreduce`, `MPI_Alltoall`, `MPI_Waitall`), causing peer ranks in the communicator to stall idle. Generates per-rank execution counts, latency log-histograms, and summary statistics.
 
 ### Intercepted Probes
 - `uprobe:mpi:MPI_Barrier`, `uretprobe:mpi:MPI_Barrier`
@@ -92,11 +92,11 @@ Identifies ranks that arrive late to global collectives (`MPI_Barrier`, `MPI_All
 # Standalone execution (using Cray MPICH)
 MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c "./examples/apps/hpc_app" presets/mpi_straggler_detector.bt
 
-# Multi-node production execution across 16 ranks (2 nodes x 8 ranks)
+# Multi-node execution across 16 ranks (2 nodes x 8 ranks)
 srun -N 2 -n 16 -l bash -c "MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c ./examples/apps/hpc_app presets/mpi_straggler_detector.bt"
 ```
 
-### Production Scale Multi-Node Output (16 Ranks on 2 Nodes)
+### Multi-Node Execution Output (16 Ranks on 2 Nodes)
 ```text
  0: Attached 9 probes
  1: Attached 9 probes
@@ -158,11 +158,11 @@ Analyzes point-to-point communication volumes across synchronous and asynchronou
 # Standalone execution on example application
 MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c "./examples/apps/mpi_p2p_app" presets/mpi_p2p_traffic.bt
 
-# Multi-node production execution across 16 ranks (2 nodes x 8 ranks)
+# Multi-node execution across 16 ranks (2 nodes x 8 ranks)
 srun -N 2 -n 16 -l bash -c "MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c ./examples/apps/mpi_p2p_app presets/mpi_p2p_traffic.bt"
 ```
 
-### Production Scale Multi-Node Output (16 Ranks on 2 Nodes)
+### Multi-Node Execution Output (16 Ranks on 2 Nodes)
 ```text
  0: Attached 6 probes
  1: Attached 6 probes
@@ -228,7 +228,7 @@ OMP_NUM_THREADS=16 ./bin/ubpftrace -c "./examples/apps/omp_app" presets/openmp_h
 srun -N 2 -n 4 -c 16 -l bash -c "OMP_NUM_THREADS=16 ./bin/ubpftrace -c ./examples/apps/omp_app presets/openmp_hybrid_contention.bt"
 ```
 
-### Production Scale Multi-Node Output (64 Active Threads Across 2 Nodes)
+### Multi-Node Execution Output (64 Active Threads Across 2 Nodes)
 ```text
 0: Attached 7 probes
 1: Attached 7 probes
@@ -266,7 +266,7 @@ srun -N 2 -n 4 -c 16 -l bash -c "OMP_NUM_THREADS=16 ./bin/ubpftrace -c ./example
 ## 5. `cuda_sync_bubbles.bt`: CUDA Host-Device Synchronization Bubbles
 
 ### Target Use Case
-Detects excessive host CPU stalls caused by synchronous CUDA Runtime operations (`cudaStreamSynchronize`, `cudaDeviceSynchronize`, `cudaEventSynchronize`, `cudaMemcpy`). Pinpoints synchronous serialization bubbles that prevent overlapping compute kernels with data movement.
+Detects host CPU stalls caused by synchronous CUDA Runtime operations (`cudaStreamSynchronize`, `cudaDeviceSynchronize`, `cudaEventSynchronize`, `cudaMemcpy`). Pinpoints synchronous serialization bubbles that prevent overlapping compute kernels with data movement.
 
 ### Intercepted Probes
 - `uprobe:cudart:cudaStreamSynchronize`, `uretprobe:cudart:cudaStreamSynchronize`
@@ -279,11 +279,11 @@ Detects excessive host CPU stalls caused by synchronous CUDA Runtime operations 
 # Standalone execution on single GPU
 ./bin/ubpftrace -c "./examples/apps/cuda_sync_app" presets/cuda_sync_bubbles.bt
 
-# Multi-node multi-GPU Slurm execution across 8 GPUs (2 nodes x 4 A100 GPUs)
+# Multi-node multi-GPU execution across 8 GPUs (2 nodes x 4 GPUs)
 srun -N 2 -n 8 --gpus-per-node=4 -l ./bin/ubpftrace -c ./examples/apps/cuda_sync_app presets/cuda_sync_bubbles.bt
 ```
 
-### Production Scale Multi-Node Output (8x NVIDIA A100 GPUs Across 2 Nodes)
+### Multi-Node Execution Output (8 GPUs Across 2 Nodes)
 ```text
 0: Attached 9 probes
 1: Attached 9 probes
@@ -342,12 +342,12 @@ Monitors Distributed Deep Learning frameworks (Megatron-LM, DeepSpeed, PyTorch D
 LD_LIBRARY_PATH=./examples/apps:$LD_LIBRARY_PATH \
 ./bin/ubpftrace -c "./examples/apps/nccl_collective_app" presets/nccl_collective_skew.bt
 
-# Multi-node multi-GPU Slurm execution across 8 GPUs (2 nodes x 4 A100 GPUs)
+# Multi-node multi-GPU execution across 8 GPUs (2 nodes x 4 GPUs)
 srun -N 2 -n 8 --gpus-per-node=4 -l bash -c \
   "LD_LIBRARY_PATH=/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps:\$LD_LIBRARY_PATH ./bin/ubpftrace -c ./examples/apps/nccl_collective_app presets/nccl_collective_skew.bt"
 ```
 
-### Production Scale Multi-Node Output (8x NVIDIA A100 GPUs Across 2 Nodes)
+### Multi-Node Execution Output (8 GPUs Across 2 Nodes)
 ```text
 0: Attached 9 probes
 1: Attached 9 probes
