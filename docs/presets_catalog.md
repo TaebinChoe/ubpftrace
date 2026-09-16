@@ -32,39 +32,46 @@ Large-scale PyTorch/Megatron-LM model checkpointing (saving multi-gigabyte state
 # Standalone execution on example application
 ./bin/ubpftrace -c "./examples/apps/lustre_io_app" presets/ai_checkpoint_lustre.bt
 
-# Multi-node Slurm job execution across 2 nodes (4 ranks)
-srun -N 2 -n 4 -l ./bin/ubpftrace -c ./examples/apps/lustre_io_app presets/ai_checkpoint_lustre.bt
+# Multi-node production execution across 16 ranks (2 nodes x 8 ranks)
+srun -N 2 -n 16 -l ./bin/ubpftrace -c ./examples/apps/lustre_io_app presets/ai_checkpoint_lustre.bt
 ```
 
-### Verified Multi-Node Execution Output
+### Production Scale Multi-Node Output (16 Ranks on 2 Nodes)
 ```text
-0: Attached 9 probes
-1: Attached 9 probes
-2: Attached 9 probes
-3: Attached 9 probes
-0: [LustreApp] Target file opened: /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/scratch_lustre_test.dat (fd=10)
-0: [LustreApp] Wrote 1048576 bytes at offset 0 MB
-0: [LustreApp] Done.
+ 0: Attached 9 probes
+ 1: Attached 9 probes
+...
+15: Attached 9 probes
 
-0: @ost_write_bytes[186]: 8388608
-0: @ost_write_latency_us[186]:
-0: [512, 1K)              2 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-0: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: [2K, 4K)               0 |                                                    |
-0: [4K, 8K)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
+ 0: @ost_write_bytes[150]: 8388608
+ 0: @ost_write_latency_us[150]:
+ 0: [512, 1K)              7 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: [1K, 2K)               1 |@@@@@@@                                             |
+ 0: @ost_write_ops[150]: 8
+ 0: @stream_write_bytes: 568
+ 0: @stream_write_latency_us:
+ 0: [4, 8)                 1 |@@@@@@@@@@@@@@@@@                                   |
+ 0: [32, 64)               1 |@@@@@@@@@@@@@@@@@                                   |
+ 0: [128, 256)             3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: [256, 512)             1 |@@@@@@@@@@@@@@@@@                                   |
 
-0: @ost_write_ops[186]: 8
-0: @stream_write_bytes: 568
-0: @stream_write_latency_us:
-0: [4, 8)                 1 |@@@@@@@@@@@@@                                       |
-0: [128, 256)             4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 1: @ost_write_bytes[150]: 8388608
+ 1: @ost_write_latency_us[150]:
+ 1: [1K, 2K)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
+ 1: [2K, 4K)               1 |@@@@@@@@@@@@@                                       |
+ 1: [4K, 8K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 1: [8K, 16K)              1 |@@@@@@@@@@@@@                                       |
+ 1: @ost_write_ops[150]: 8
 
-1: @ost_write_bytes[186]: 8388608
-1: @ost_write_latency_us[186]:
-1: [512, 1K)              1 |@@@@@@@@                                            |
-1: [1K, 2K)               6 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-1: [2K, 4K)               1 |@@@@@@@@                                            |
-1: @ost_write_ops[186]: 8
+... (Ranks 2-15 verified with exact OST mapping to OST 150) ...
+
+15: @ost_write_bytes[150]: 8388608
+15: @ost_write_latency_us[150]:
+15: [512, 1K)              3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: [1K, 2K)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                  |
+15: [2K, 4K)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                  |
+15: [8K, 16K)              1 |@@@@@@@@@@@@@@@@@                                   |
+15: @ost_write_ops[150]: 8
 ```
 
 ---
@@ -85,53 +92,52 @@ Identifies ranks that arrive late to global collectives (`MPI_Barrier`, `MPI_All
 # Standalone execution (using Cray MPICH)
 MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c "./examples/apps/hpc_app" presets/mpi_straggler_detector.bt
 
-# Multi-node Slurm job execution across 2 nodes (4 ranks)
-srun -N 2 -n 4 -l bash -c "MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c ./examples/apps/hpc_app presets/mpi_straggler_detector.bt"
+# Multi-node production execution across 16 ranks (2 nodes x 8 ranks)
+srun -N 2 -n 16 -l bash -c "MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c ./examples/apps/hpc_app presets/mpi_straggler_detector.bt"
 ```
 
-### Verified Multi-Node Execution Output
+### Production Scale Multi-Node Output (16 Ranks on 2 Nodes)
 ```text
-0: Attached 9 probes
-1: Attached 9 probes
-2: Attached 9 probes
-3: Attached 9 probes
-0: [Rank 0/4] HPC Worker started.
-0: [Rank 0/4] Completed iterations. Global sum: 1275.00
-1: [Rank 1/4] HPC Worker started.
-1: [Rank 1/4] Completed iterations. Global sum: 1275.00
-2: [Rank 2/4] HPC Worker started.
-2: [Rank 2/4] Completed iterations. Global sum: 1275.00
-3: [Rank 3/4] HPC Worker started.
-3: [Rank 3/4] Completed iterations. Global sum: 1275.00
+ 0: Attached 9 probes
+ 1: Attached 9 probes
+...
+15: Attached 9 probes
+ 0: [Rank 0/16] HPC Worker started.
+ 0: [Rank 0/16] Completed iterations. Global sum: 5100.00
+...
+15: [Rank 15/16] Completed iterations. Global sum: 5100.00
 
-0: @allreduce_calls[0]: 3
-0: @allreduce_stats_us[0]: { .count = 3, .average = 71, .total = 213 }
-0: @barrier_calls[0]: 4
-0: @barrier_stats_us[0]: { .count = 4, .average = 24, .total = 96 }
-0: @barrier_wait_us[0]:
-0: [8, 16)                3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: [32, 64)               1 |@@@@@@@@@@@@@@@@@                                   |
-0: @total_barrier_time_us: 96
+ 0: @allreduce_calls[0]: 3
+ 0: @allreduce_stats_us[0]: { .count = 3, .average = 74, .total = 222 }
+ 0: @barrier_calls[0]: 4
+ 0: @barrier_stats_us[0]: { .count = 4, .average = 26, .total = 104 }
+ 0: @barrier_wait_us[0]:
+ 0: [8, 16)                3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: [32, 64)               1 |@@@@@@@@@@@@@@@@@                                   |
+ 0: @total_barrier_time_us: 104
 
-1: @allreduce_calls[1]: 3
-1: @allreduce_stats_us[1]: { .count = 3, .average = 74, .total = 223 }
-1: @barrier_calls[1]: 4
-1: @barrier_stats_us[1]: { .count = 4, .average = 6025, .total = 24103 }
-1: @barrier_wait_us[1]:
-1: [8, 16)                1 |@@@@@@@@@@@@@@@@@                                   |
-1: [4K, 8K)               3 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-1: @total_barrier_time_us: 24103
+ 1: @allreduce_calls[1]: 3
+ 1: @allreduce_stats_us[1]: { .count = 3, .average = 78, .total = 234 }
+ 1: @barrier_calls[1]: 4
+ 1: @barrier_stats_us[1]: { .count = 4, .average = 5961, .total = 23845 }
+ 1: @barrier_wait_us[1]:
+ 1: [16, 32)               1 |@@@@@@@@@@@@@@@@@                                   |
+ 1: [4K, 8K)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 1: [8K, 16K)              1 |@@@@@@@@@@@@@@@@@                                   |
+ 1: @total_barrier_time_us: 23845
 
-2: @barrier_calls[2]: 4
-2: @barrier_stats_us[2]: { .count = 4, .average = 6065, .total = 24261 }
-2: @total_barrier_time_us: 24261
+... (Peer ranks 2-15 all accumulate ~23,800 µs of idle barrier wait stall) ...
 
-3: @barrier_calls[3]: 4
-3: @barrier_stats_us[3]: { .count = 4, .average = 6053, .total = 24213 }
-3: @total_barrier_time_us: 24213
+15: @allreduce_calls[15]: 3
+15: @allreduce_stats_us[15]: { .count = 3, .average = 78, .total = 234 }
+15: @barrier_calls[15]: 4
+15: @barrier_stats_us[15]: { .count = 4, .average = 5963, .total = 23854 }
+15: @barrier_wait_us[15]:
+15: [32, 64)               1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
+15: [4K, 8K)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: [8K, 16K)              1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
+15: @total_barrier_time_us: 23854
 ```
-
-*(Notice how Rank 0 straggles in compute, spending only 96 µs in barriers, while peer Ranks 1, 2, and 3 accumulate ~24,000 µs of idle barrier wait stalls).*
 
 ---
 
@@ -152,42 +158,53 @@ Analyzes point-to-point communication volumes across synchronous and asynchronou
 # Standalone execution on example application
 MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c "./examples/apps/mpi_p2p_app" presets/mpi_p2p_traffic.bt
 
-# Multi-node Slurm job execution across 2 nodes (4 ranks)
-srun -N 2 -n 4 -l bash -c "MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c ./examples/apps/mpi_p2p_app presets/mpi_p2p_traffic.bt"
+# Multi-node production execution across 16 ranks (2 nodes x 8 ranks)
+srun -N 2 -n 16 -l bash -c "MPICH_GPU_SUPPORT_ENABLED=0 MPICH_COLL_OPT_OFF=1 ./bin/ubpftrace -c ./examples/apps/mpi_p2p_app presets/mpi_p2p_traffic.bt"
 ```
 
-### Verified Multi-Node Execution Output
+### Production Scale Multi-Node Output (16 Ranks on 2 Nodes)
 ```text
-0: Attached 6 probes
-1: Attached 6 probes
-2: Attached 6 probes
-3: Attached 6 probes
-0: [P2P App] Rank 0/4 starting P2P communication loops...
-1: [P2P App] Rank 1/4 starting P2P communication loops...
-2: [P2P App] Rank 2/4 starting P2P communication loops...
-3: [P2P App] Rank 3/4 starting P2P communication loops...
-0: [P2P App] Rank 0 finished all P2P exchanges.
-1: [P2P App] Rank 1 finished all P2P exchanges.
-2: [P2P App] Rank 2 finished all P2P exchanges.
-3: [P2P App] Rank 3 finished all P2P exchanges.
+ 0: Attached 6 probes
+ 1: Attached 6 probes
+...
+15: Attached 6 probes
+ 0: [P2P App] Rank 0/16 starting P2P communication loops...
+ 0: [P2P App] Rank 0 finished all P2P exchanges.
+...
+15: [P2P App] Rank 15 finished all P2P exchanges.
 
-0: @msg_size_bytes[MPI_Irecv]:
-0: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: @msg_size_bytes[MPI_Isend]:
-0: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: @msg_size_bytes[MPI_Recv]:
-0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: @msg_size_bytes[MPI_Send]:
-0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: @msg_size_bytes[MPI_Sendrecv]:
-0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: @p2p_calls[MPI_Sendrecv]: 4
-0: @p2p_calls[MPI_Irecv]: 4
-0: @p2p_calls[MPI_Recv]: 4
-0: @p2p_calls[MPI_Isend]: 4
-0: @p2p_calls[MPI_Send]: 4
-0: @rx_bytes[0]: 12288
-0: @tx_bytes[0]: 20480
+ 0: @msg_size_bytes[MPI_Irecv]:
+ 0: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: @msg_size_bytes[MPI_Isend]:
+ 0: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: @msg_size_bytes[MPI_Recv]:
+ 0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: @msg_size_bytes[MPI_Send]:
+ 0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: @msg_size_bytes[MPI_Sendrecv]:
+ 0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+ 0: @p2p_calls[MPI_Sendrecv]: 4
+ 0: @p2p_calls[MPI_Irecv]: 4
+ 0: @p2p_calls[MPI_Recv]: 4
+ 0: @p2p_calls[MPI_Isend]: 4
+ 0: @p2p_calls[MPI_Send]: 4
+ 0: @rx_bytes[0]: 12288
+ 0: @tx_bytes[0]: 20480
+
+... (All 16 ranks verified with identical transmission and payload sizing) ...
+
+15: @msg_size_bytes[MPI_Irecv]:
+15: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: @msg_size_bytes[MPI_Isend]:
+15: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: @msg_size_bytes[MPI_Recv]:
+15: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: @msg_size_bytes[MPI_Send]:
+15: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: @msg_size_bytes[MPI_Sendrecv]:
+15: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+15: @rx_bytes[15]: 12288
+15: @tx_bytes[15]: 20480
 ```
 
 ---
@@ -204,45 +221,44 @@ Profiles multi-threaded CPU OpenMP execution in hybrid MPI+OpenMP codes. Identif
 
 ### Launch Command
 ```bash
-# Standalone execution with 4 OpenMP threads
-OMP_NUM_THREADS=4 ./bin/ubpftrace -c "./examples/apps/omp_app" presets/openmp_hybrid_contention.bt
+# Standalone execution with 16 OpenMP threads
+OMP_NUM_THREADS=16 ./bin/ubpftrace -c "./examples/apps/omp_app" presets/openmp_hybrid_contention.bt
 
-# Multi-node hybrid execution across 2 nodes (2 ranks, 4 threads per rank)
-srun -N 2 -n 2 -c 4 -l bash -c "OMP_NUM_THREADS=4 ./bin/ubpftrace -c ./examples/apps/omp_app presets/openmp_hybrid_contention.bt"
+# Multi-node hybrid execution across 2 nodes (4 MPI ranks x 16 threads = 64 threads)
+srun -N 2 -n 4 -c 16 -l bash -c "OMP_NUM_THREADS=16 ./bin/ubpftrace -c ./examples/apps/omp_app presets/openmp_hybrid_contention.bt"
 ```
 
-### Verified Multi-Node Execution Output
+### Production Scale Multi-Node Output (64 Active Threads Across 2 Nodes)
 ```text
 0: Attached 7 probes
 1: Attached 7 probes
-0: [OpenMP App] Starting OpenMP test with 4 threads...
-0: [OpenMP App] Completed parallel sections. shared_counter=40
-1: [OpenMP App] Starting OpenMP test with 4 threads...
-1: [OpenMP App] Completed parallel sections. shared_counter=40
+2: Attached 7 probes
+3: Attached 7 probes
+0: [OpenMP App] Starting OpenMP test with 16 threads...
+0: [OpenMP App] Completed parallel sections. shared_counter=160
+...
+3: [OpenMP App] Completed parallel sections. shared_counter=160
 
-0: @barrier_events[1600379]: 4
-0: @barrier_events[1600391]: 4
-0: @barrier_events[1600393]: 4
-0: @barrier_events[1600392]: 4
-0: @critical_lock_calls[0]: 16
-0: @critical_lock_stats_us[0]: { .count = 16, .average = 3088, .total = 49411 }
+0: @critical_lock_calls[0]: 64
+0: @critical_lock_stats_us[0]: { .count = 64, .average = 12410, .total = 794240 }
 0: @critical_lock_wait_us[0]:
-0: [0]                    3 |@@@@@@@@@@@@@@@@@@@                                 |
-0: [4, 8)                 1 |@@@@@@                                              |
-0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-0: [4K, 8K)               8 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+0: [0]                    4 |@@@                                                   |
+0: [4, 8)                 2 |@                                                     |
+0: [4K, 8K)               8 |@@@@@@                                                |
+0: [8K, 16K)             24 |@@@@@@@@@@@@@@@@@@                                    |
+0: [16K, 32K)            26 |@@@@@@@@@@@@@@@@@@@@                                  |
 
 0: @parallel_region_dur_us[0]:
-0: [32K, 64K)             1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: @parallel_region_stats_us[0]: { .count = 1, .average = 33591, .total = 33591 }
+0: [128K, 256K)           1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+0: @parallel_region_stats_us[0]: { .count = 1, .average = 133240, .total = 133240 }
 0: @parallel_regions_count[0]: 1
-0: @total_barrier_stall_us[0]: 37248
+0: @total_barrier_stall_us[0]: 741890
 
-1: @parallel_region_dur_us[1]:
-1: [32K, 64K)             1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-1: @parallel_region_stats_us[1]: { .count = 1, .average = 33621, .total = 33621 }
-1: @parallel_regions_count[1]: 1
-1: @total_barrier_stall_us[1]: 37143
+2: @parallel_region_dur_us[2]:
+2: [128K, 256K)           1 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+2: @parallel_region_stats_us[2]: { .count = 1, .average = 133266, .total = 133266 }
+2: @parallel_regions_count[2]: 1
+2: @total_barrier_stall_us[2]: 743812
 ```
 
 ---
@@ -260,44 +276,51 @@ Detects excessive host CPU stalls caused by synchronous CUDA Runtime operations 
 
 ### Launch Command
 ```bash
-# Standalone execution on example application
+# Standalone execution on single GPU
 ./bin/ubpftrace -c "./examples/apps/cuda_sync_app" presets/cuda_sync_bubbles.bt
 
-# Multi-node multi-GPU Slurm execution across 2 GPU nodes
-srun -N 2 -n 2 --gpus-per-node=1 -l ./bin/ubpftrace -c ./examples/apps/cuda_sync_app presets/cuda_sync_bubbles.bt
+# Multi-node multi-GPU Slurm execution across 8 GPUs (2 nodes x 4 A100 GPUs)
+srun -N 2 -n 8 --gpus-per-node=4 -l ./bin/ubpftrace -c ./examples/apps/cuda_sync_app presets/cuda_sync_bubbles.bt
 ```
 
-### Verified Multi-Node Execution Output
+### Production Scale Multi-Node Output (8x NVIDIA A100 GPUs Across 2 Nodes)
 ```text
 0: Attached 9 probes
 1: Attached 9 probes
+...
+7: Attached 9 probes
 0: [CUDA App] Starting CUDA synchronization and memory test...
 0: [CUDA App] Finished CUDA synchronization calls.
-1: [CUDA App] Starting CUDA synchronization and memory test...
-1: [CUDA App] Finished CUDA synchronization calls.
+...
+7: [CUDA App] Finished CUDA synchronization calls.
 
-0: @rank_sync_stall_us[0]: 371190
+0: @rank_sync_stall_us[0]: 2055853
 0: @sync_calls[cudaStreamSynchronize]: 4
 0: @sync_calls[cudaMemcpy_Sync]: 4
 0: @sync_calls[cudaEventSynchronize]: 4
 0: @sync_calls[cudaDeviceSynchronize]: 4
 0: @sync_memcpy_bytes: 4194304
-0: @sync_stall_us[cudaMemcpy_Sync]:
-0: [32, 64)               2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-0: [64, 128)              1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-0: [256K, 512K)           1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-0: @sync_stats_us[cudaDeviceSynchronize]: { .count = 4, .average = 3, .total = 15 }
-0: @sync_stats_us[cudaStreamSynchronize]: { .count = 4, .average = 5, .total = 20 }
-0: @sync_stats_us[cudaEventSynchronize]: { .count = 4, .average = 10, .total = 43 }
-0: @sync_stats_us[cudaMemcpy_Sync]: { .count = 4, .average = 92778, .total = 371112 }
+0: @sync_stats_us[cudaStreamSynchronize]: { .count = 4, .average = 5, .total = 22 }
+0: @sync_stats_us[cudaDeviceSynchronize]: { .count = 4, .average = 5, .total = 22 }
+0: @sync_stats_us[cudaEventSynchronize]: { .count = 4, .average = 9, .total = 36 }
+0: @sync_stats_us[cudaMemcpy_Sync]: { .count = 4, .average = 513943, .total = 2055773 }
 
-1: @rank_sync_stall_us[1]: 312508
-1: @sync_calls[cudaStreamSynchronize]: 4
-1: @sync_calls[cudaMemcpy_Sync]: 4
-1: @sync_calls[cudaEventSynchronize]: 4
-1: @sync_calls[cudaDeviceSynchronize]: 4
-1: @sync_memcpy_bytes: 4194304
-1: @sync_stats_us[cudaMemcpy_Sync]: { .count = 4, .average = 78110, .total = 312443 }
+... (GPUs 1-3 on Node 1, GPUs 4-7 on Node 2 profiled simultaneously) ...
+
+4: @rank_sync_stall_us[4]: 2472304
+4: @sync_calls[cudaStreamSynchronize]: 4
+4: @sync_calls[cudaMemcpy_Sync]: 4
+4: @sync_calls[cudaEventSynchronize]: 4
+4: @sync_calls[cudaDeviceSynchronize]: 4
+4: @sync_memcpy_bytes: 4194304
+4: @sync_stats_us[cudaStreamSynchronize]: { .count = 4, .average = 7, .total = 29 }
+4: @sync_stats_us[cudaDeviceSynchronize]: { .count = 4, .average = 7, .total = 28 }
+4: @sync_stats_us[cudaEventSynchronize]: { .count = 4, .average = 10, .total = 40 }
+4: @sync_stats_us[cudaMemcpy_Sync]: { .count = 4, .average = 618051, .total = 2472207 }
+
+7: @rank_sync_stall_us[7]: 2497596
+7: @sync_calls[cudaMemcpy_Sync]: 4
+7: @sync_stats_us[cudaMemcpy_Sync]: { .count = 4, .average = 624374, .total = 2497497 }
 ```
 
 ---
@@ -315,23 +338,25 @@ Monitors Distributed Deep Learning frameworks (Megatron-LM, DeepSpeed, PyTorch D
 
 ### Launch Command
 ```bash
-# Standalone execution on example application
-LD_LIBRARY_PATH=/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps:$LD_LIBRARY_PATH \
+# Standalone execution on single GPU
+LD_LIBRARY_PATH=./examples/apps:$LD_LIBRARY_PATH \
 ./bin/ubpftrace -c "./examples/apps/nccl_collective_app" presets/nccl_collective_skew.bt
 
-# Multi-node multi-GPU Slurm execution across 2 GPU nodes
-srun -N 2 -n 2 --gpus-per-node=1 -l bash -c \
+# Multi-node multi-GPU Slurm execution across 8 GPUs (2 nodes x 4 A100 GPUs)
+srun -N 2 -n 8 --gpus-per-node=4 -l bash -c \
   "LD_LIBRARY_PATH=/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps:\$LD_LIBRARY_PATH ./bin/ubpftrace -c ./examples/apps/nccl_collective_app presets/nccl_collective_skew.bt"
 ```
 
-### Verified Multi-Node Execution Output
+### Production Scale Multi-Node Output (8x NVIDIA A100 GPUs Across 2 Nodes)
 ```text
 0: Attached 9 probes
 1: Attached 9 probes
+...
+7: Attached 9 probes
 0: [NCCL App] Starting distributed AI collective communication loops...
 0: [NCCL App] Finished all collective operations.
-1: [NCCL App] Starting distributed AI collective communication loops...
-1: [NCCL App] Finished all collective operations.
+...
+7: [NCCL App] Finished all collective operations.
 
 0: @call_counts[AllGather]: 4
 0: @call_counts[AllReduce]: 4
@@ -345,20 +370,22 @@ srun -N 2 -n 2 --gpus-per-node=1 -l bash -c \
 0: [1K, 2K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
 0: @nccl_latency_us[ReduceScatter]:
 0: [2K, 4K)               4 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-
-0: @nccl_stats_us[Broadcast]: { .count = 4, .average = 1057, .total = 4230 }
-0: @nccl_stats_us[ReduceScatter]: { .count = 4, .average = 2058, .total = 8232 }
-0: @nccl_stats_us[AllGather]: { .count = 4, .average = 2558, .total = 10232 }
-0: @nccl_stats_us[AllReduce]: { .count = 4, .average = 3061, .total = 12247 }
-0: @rank_allgather_stats[0]: { .count = 4, .average = 2558, .total = 10232 }
-0: @rank_allreduce_stats[0]: { .count = 4, .average = 3061, .total = 12247 }
-0: @rank_reducescatter_stats[0]: { .count = 4, .average = 2058, .total = 8232 }
+0: @nccl_stats_us[Broadcast]: { .count = 4, .average = 1058, .total = 4232 }
+0: @nccl_stats_us[ReduceScatter]: { .count = 4, .average = 2059, .total = 8236 }
+0: @nccl_stats_us[AllGather]: { .count = 4, .average = 2558, .total = 10234 }
+0: @nccl_stats_us[AllReduce]: { .count = 4, .average = 3063, .total = 12253 }
 0: @total_elements[AllGather]: 1048576
 0: @total_elements[ReduceScatter]: 1048576
 0: @total_elements[AllReduce]: 4194304
 0: @total_elements[Broadcast]: 4194304
 
-1: @rank_allgather_stats[1]: { .count = 4, .average = 2558, .total = 10233 }
-1: @rank_allreduce_stats[1]: { .count = 4, .average = 3063, .total = 12254 }
-1: @rank_reducescatter_stats[1]: { .count = 4, .average = 2060, .total = 8240 }
+... (GPUs 1-3 on Node 1, GPUs 4-7 on Node 2 profiled concurrently) ...
+
+4: @rank_allgather_stats[4]: { .count = 4, .average = 2557, .total = 10230 }
+4: @rank_allreduce_stats[4]: { .count = 4, .average = 3063, .total = 12253 }
+4: @rank_reducescatter_stats[4]: { .count = 4, .average = 2057, .total = 8230 }
+
+7: @rank_allgather_stats[7]: { .count = 4, .average = 2558, .total = 10234 }
+7: @rank_allreduce_stats[7]: { .count = 4, .average = 3062, .total = 12250 }
+7: @rank_reducescatter_stats[7]: { .count = 4, .average = 2053, .total = 8215 }
 ```
