@@ -4,36 +4,50 @@
 #include <unistd.h>
 #include <omp.h>
 
-void compute_task(int tid, int iter) {
-    long sum = 0;
-    for (int i = 0; i < 100000; i++) {
-        sum += (i ^ (tid + iter));
+// Simulated Thread Compute Task
+// Thread 0 performs heavy refinement compute (15ms delay)
+// Other threads finish early (1ms delay)
+void do_thread_compute(int tid, int iter) {
+    if (tid == 0) {
+        usleep(15000); // 15ms
+    } else {
+        usleep(1000);  // 1ms
     }
-    if (sum == 0) printf("sum=0\n");
 }
 
-int main() {
-    printf("[OpenMP App] Starting OpenMP test with %d threads...\n", omp_get_max_threads());
+int main(int argc, char **argv) {
+    int num_threads = omp_get_max_threads();
+    printf("[OpenMP App] Initializing OpenMP worker pool with %d threads...\n", num_threads);
 
-    long shared_counter = 0;
+    long shared_accumulator = 0;
+    const int NUM_ITERATIONS = 4;
 
-    // 1. Parallel loop with explicit barrier
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
-        for (int iter = 0; iter < 4; iter++) {
-            compute_task(tid, iter);
+        if (tid == 0) {
+            printf("[OpenMP App] Parallel region launched with %d active threads.\n", omp_get_num_threads());
+        }
 
+        for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
+            // 1. Thread Workload Imbalance Compute Phase
+            do_thread_compute(tid, iter);
+
+            // 2. OpenMP Barrier Synchronization (Threads 1..N-1 stall waiting for Thread 0)
             #pragma omp barrier
 
+            // 3. Serialized Hot Critical Section (Severe Lock Convoy Contention)
             #pragma omp critical
             {
-                shared_counter += (tid + 1);
-                usleep(2000); // 2ms inside critical section
+                shared_accumulator += (tid + 1) * (iter + 1);
+                usleep(1500); // 1.5ms hold time per thread inside critical section
             }
+
+            // 4. Second synchronization barrier
+            #pragma omp barrier
         }
     }
 
-    printf("[OpenMP App] Completed parallel sections. shared_counter=%ld\n", shared_counter);
+    printf("[OpenMP App] Finished OpenMP computations. Final accumulator: %ld\n", shared_accumulator);
     return 0;
 }

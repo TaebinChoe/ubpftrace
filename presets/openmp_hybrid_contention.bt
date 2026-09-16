@@ -4,11 +4,12 @@
 //
 // Diagnoses:
 //  - Thread load imbalance during OpenMP parallel loop barrier synchronization.
-//  - Critical section and mutex lock acquisition stalls.
+//  - Critical section and mutex lock acquisition stalls across threads.
 //  - Execution time distribution of OpenMP parallel regions.
 //
 // Usage:
-//  ubpftrace -c "srun -n 4 ./hybrid_app" presets/openmp_hybrid_contention.bt
+//  OMP_NUM_THREADS=16 ubpftrace -c "examples/apps/omp_app" presets/openmp_hybrid_contention.bt
+//  srun -N 2 -n 4 -c 16 ubpftrace -c "./hybrid_app" presets/openmp_hybrid_contention.bt
 // ============================================================================
 
 uprobe:gomp:GOMP_barrier {
@@ -19,7 +20,7 @@ uretprobe:gomp:GOMP_barrier /@start_barrier[tid]/ {
     $dur_us = (nsecs - @start_barrier[tid]) / 1000;
     @omp_barrier_wait_us[tid] = hist($dur_us);
     @omp_barrier_stats_us[tid] = stats($dur_us);
-    @total_barrier_stall_us[rank] = sum($dur_us);
+    @total_barrier_stall_us = sum($dur_us);
     @barrier_events[tid] = count();
 
     delete(@start_barrier[tid]);
@@ -31,9 +32,9 @@ uprobe:gomp:GOMP_critical_start {
 
 uretprobe:gomp:GOMP_critical_start /@start_critical[tid]/ {
     $dur_us = (nsecs - @start_critical[tid]) / 1000;
-    @critical_lock_wait_us[rank] = hist($dur_us);
-    @critical_lock_stats_us[rank] = stats($dur_us);
-    @critical_lock_calls[rank] = count();
+    @critical_lock_wait_us[tid] = hist($dur_us);
+    @critical_lock_stats_us[tid] = stats($dur_us);
+    @critical_lock_calls[tid] = count();
 
     delete(@start_critical[tid]);
 }
@@ -44,9 +45,9 @@ uprobe:gomp:GOMP_parallel {
 
 uretprobe:gomp:GOMP_parallel /@start_parallel[tid]/ {
     $dur_us = (nsecs - @start_parallel[tid]) / 1000;
-    @parallel_region_dur_us[rank] = hist($dur_us);
-    @parallel_region_stats_us[rank] = stats($dur_us);
-    @parallel_regions_count[rank] = count();
+    @parallel_region_dur_us[tid] = hist($dur_us);
+    @parallel_region_stats_us[tid] = stats($dur_us);
+    @parallel_regions_count[tid] = count();
 
     delete(@start_parallel[tid]);
 }

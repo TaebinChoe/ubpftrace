@@ -29,6 +29,7 @@ uretprobe:libc:pwrite64 /@start_pwrite[tid]/ {
     if ($ost >= 0) {
         @ost_write_bytes[$ost] = sum($bytes);
         @ost_write_latency_us[$ost] = hist($lat_us);
+        @ost_write_stats_us[$ost] = stats($lat_us);
         @ost_write_ops[$ost] = count();
     } else {
         @non_lustre_write_bytes = sum($bytes);

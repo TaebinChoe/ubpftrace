@@ -22,34 +22,50 @@ extern cudaError_t cudaDeviceSynchronize(void);
 extern cudaError_t cudaEventSynchronize(cudaEvent_t event);
 extern cudaError_t cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpyKind kind);
 
-int main() {
-    printf("[CUDA App] Starting CUDA synchronization and memory test...\n");
+int main(int argc, char **argv) {
+    printf("[CUDA App] Starting Deep Learning training step with injected synchronization bubbles...\n");
 
-    // Allocate host buffers
-    size_t size = 1024 * 1024; // 1MB
+    size_t size = 4 * 1024 * 1024; // 4MB tensor buffer
     char *src = (char *)malloc(size);
     char *dst = (char *)malloc(size);
+    if (!src || !dst) {
+        perror("malloc");
+        return 1;
+    }
     memset(src, 0x42, size);
 
-    for (int iter = 0; iter < 4; iter++) {
-        // 1. cudaMemcpy (synchronous copy)
-        cudaMemcpy(dst, src, size, cudaMemcpyHostToHost);
-        usleep(2000);
+    const int NUM_STEPS = 5;
 
-        // 2. cudaStreamSynchronize
-        cudaStreamSynchronize(NULL);
-        usleep(3000);
+    for (int step = 0; step < NUM_STEPS; step++) {
+        printf("\n--- Training Step %d/%d ---\n", step + 1, NUM_STEPS);
 
-        // 3. cudaDeviceSynchronize
+        // 1. Synchronous Host-to-Device Parameter Transfer
+        printf("[CUDA App] Step %d: Synchronous cudaMemcpy (HostToDevice, 4 MB)...\n", step + 1);
+        cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
+        usleep(4000); // 4ms transfer wait
+
+        // 2. Stream Synchronization (Waiting on Forward Pass Kernel Queue)
+        printf("[CUDA App] Step %d: Blocking cudaStreamSynchronize (Forward Pass)...\n", step + 1);
+        cudaStreamSynchronize((cudaStream_t)(uintptr_t)0x1);
+        usleep(8000); // 8ms bubble
+
+        // 3. Synchronous Device-to-Host Loss / Metric Fetch (Anti-pattern: .item() / print loss)
+        printf("[CUDA App] Step %d: Synchronous cudaMemcpy (DeviceToHost Loss Tensor)...\n", step + 1);
+        cudaMemcpy(dst, src, 1024, cudaMemcpyDeviceToHost);
+        usleep(3000); // 3ms pipeline bubble
+
+        // 4. Explicit Full Device Barrier (cudaDeviceSynchronize)
+        printf("[CUDA App] Step %d: Full GPU Device Synchronization Barrier...\n", step + 1);
         cudaDeviceSynchronize();
-        usleep(1000);
+        usleep(12000); // 12ms pipeline stall
 
-        // 4. cudaEventSynchronize
-        cudaEventSynchronize(NULL);
-        usleep(1500);
+        // 5. Event Synchronization
+        printf("[CUDA App] Step %d: cudaEventSynchronize (Gradient Reduction Event)...\n", step + 1);
+        cudaEventSynchronize((cudaEvent_t)(uintptr_t)0x2);
+        usleep(5000); // 5ms
     }
 
-    printf("[CUDA App] Finished CUDA synchronization calls.\n");
+    printf("\n[CUDA App] Training sequence finished.\n");
     free(src);
     free(dst);
     return 0;
