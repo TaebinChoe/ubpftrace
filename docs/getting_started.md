@@ -15,7 +15,7 @@ This tutorial provides a complete walkthrough of `ubpftrace` from your first pro
 
 ### Build Binaries
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./scripts/build_hpc.sh
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./scripts/build_hpc.sh
 ```
 
 Upon completion, all executables are placed in `bin/`:
@@ -41,20 +41,31 @@ void compute_task(int task_id, int data_size) {
 
 int main(int argc, char **argv) {
     int total_tasks = (argc > 1) ? atoi(argv[1]) : 20;
-    printf("[TargetApp] Starting execution of %d tasks...\n", total_tasks);
+    printf("[TargetApp] Starting execution of %d tasks (~%.1f seconds)...\n",
+           total_tasks, (double)total_tasks * 0.1);
 
     for (int i = 0; i < total_tasks; i++) {
         int data_size = (i * 17 + 10) % 100;
         compute_task(i, data_size);
+
+        if ((i + 1) % 10 == 0 || (i + 1) == total_tasks) {
+            printf("[TargetApp] Progress: %d / %d tasks (current task_id=%d, data_size=%d)\n",
+                   i + 1, total_tasks, i, data_size);
+        }
     }
     printf("[TargetApp] Finished all tasks successfully.\n");
     return 0;
 }
 ```
 
-Compile the application:
+### Compile the Application:
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ make -C examples/getting_started
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ make -C examples/getting_started
+```
+```text
+make: Entering directory '/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started'
+/usr/bin/gcc -O2 -g -fno-inline -fno-omit-frame-pointer -o target_app target_app.c
+make: Leaving directory '/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started'
 ```
 
 ---
@@ -71,19 +82,18 @@ uprobe:./examples/getting_started/target_app:compute_task {
 }
 ```
 
-### Execution & Real Terminal Output
+### Input Prompt & Verbatim Execution Output:
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace -c "./examples/getting_started/target_app 5" examples/getting_started/01_function_tracing.bt
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace -c "./examples/getting_started/target_app 5" examples/getting_started/01_function_tracing.bt
 ```
-
 ```text
 Attached 1 probe
 [TargetApp] Starting execution of 5 tasks (~0.5 seconds)...
-[TS 113086036814292 ns] compute_task() invoked -> task_id=0, data_size=10 bytes
-[TS 113086136885820 ns] compute_task() invoked -> task_id=1, data_size=27 bytes
-[TS 113086236946022 ns] compute_task() invoked -> task_id=2, data_size=44 bytes
-[TS 113086337005433 ns] compute_task() invoked -> task_id=3, data_size=61 bytes
-[TS 113086437060412 ns] compute_task() invoked -> task_id=4, data_size=78 bytes
+[TS 114175885900464 ns] compute_task() invoked -> task_id=0, data_size=10 bytes
+[TS 114175985973386 ns] compute_task() invoked -> task_id=1, data_size=27 bytes
+[TS 114176086055604 ns] compute_task() invoked -> task_id=2, data_size=44 bytes
+[TS 114176186134977 ns] compute_task() invoked -> task_id=3, data_size=61 bytes
+[TS 114176286226563 ns] compute_task() invoked -> task_id=4, data_size=78 bytes
 [TargetApp] Progress: 5 / 5 tasks (current task_id=4, data_size=78)
 [TargetApp] Finished all tasks successfully.
 ```
@@ -105,11 +115,10 @@ uprobe:./examples/getting_started/target_app:compute_task {
 }
 ```
 
-### Execution & Real Terminal Output
+### Input Prompt & Verbatim Execution Output:
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace -c "./examples/getting_started/target_app 20" examples/getting_started/02_map_aggregation.bt
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace -c "./examples/getting_started/target_app 20" examples/getting_started/02_map_aggregation.bt
 ```
-
 ```text
 Attached 1 probe
 [TargetApp] Starting execution of 20 tasks (~2.0 seconds)...
@@ -153,15 +162,13 @@ uprobe:./examples/getting_started/target_app:compute_task {
 }
 ```
 
-### Execution & Real Terminal Output
+### Input Prompt & Verbatim Execution Output:
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 25" examples/getting_started/03_windowed_metrics.bt
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 25" examples/getting_started/03_windowed_metrics.bt
 ```
-
 ```text
 Attached 1 probe
 [TargetApp] Starting execution of 25 tasks (~2.5 seconds)...
-[Stream @ 0 s] Window #0 started | Sample task_id=0, data_size=10
 [TargetApp] Progress: 10 / 25 tasks (current task_id=9, data_size=63)
 [Stream @ 1 s] Window #1 started | Sample task_id=10, data_size=80
 [TargetApp] Progress: 20 / 25 tasks (current task_id=19, data_size=33)
@@ -171,9 +178,9 @@ Attached 1 probe
 
 
 @last_printed_window: 2
-@window_data_stats[2]: { .count = 5, .average = 52, .total = 260 }
-@window_data_stats[1]: { .count = 10, .average = 48, .total = 485 }
-@window_data_stats[0]: { .count = 10, .average = 53, .total = 535 }
+@window_data_stats[2]: { .count = 5, .average = 44, .total = 220 }
+@window_data_stats[0]: { .count = 10, .average = 46, .total = 465 }
+@window_data_stats[1]: { .count = 10, .average = 56, .total = 565 }
 @window_task_count[2]: 5
 @window_task_count[1]: 10
 @window_task_count[0]: 10
@@ -196,36 +203,41 @@ uprobe:./examples/getting_started/target_app:compute_task {
 }
 ```
 
-### Step 1: Run Tracing with Live Snapshots Enabled
+### Input Prompts (Two Terminals):
+
+**Terminal 1 (Run Tracing with Periodic Live Snapshots):**
 ```bash
-# Terminal 1
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ UBPFTRACE_LIVE_DIR=./live_demo ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" examples/getting_started/04_live_top_dashboard.bt
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo \
+  ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" \
+  examples/getting_started/04_live_top_dashboard.bt
 ```
 
-### Step 2: Launch `ubpftrace-top`
+**Terminal 2 (Launch `ubpftrace-top` Dashboard):**
 ```bash
-# Terminal 2
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-top -d ./live_demo
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
 ```
 
-**Real Terminal Output from `ubpftrace-top`:**
+### Verbatim Output from Terminal 2 (`ubpftrace-top` Dashboard):
 ```text
 ================================================================================
  ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
-================================================================================
- Snapshot Dir : /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started/.live_demo
+================================================================================   
+ Snapshot Dir : ./examples/getting_started/.live_demo
  Active Nodes : 1 | Stragglers: 0 | Interval: 1s
 --------------------------------------------------------------------------------
 
 [CLUSTER-WIDE METRIC AGGREGATIONS]
 Map Name                        Global Max    Global Min      Global Sum Entries
 --------------------------------------------------------------------------------
+.data.event_los                          0             0               0       0
+1093670_.rodata                          0             0               0       0
 AT_data_size_di                          2             1               7       4
 AT_total_bytes                         327           327             327       1
 AT_total_tasks                           7             7               7       1
+ringbuf                                  0             0               0       0
 
 [NODE TOPOLOGY & SYNC STATUS]
-Node ID   Hostname            Epoch     Latency Lag (ms)    Status
+Node ID   Hostname            Epoch     Latency Lag (ms)    Status         
 ---------------------------------------------------------------------------
 3650575891login18             1         0.00                [HEALTHY]
 
@@ -246,67 +258,91 @@ uprobe:./examples/getting_started/target_app:compute_task {
 }
 ```
 
-### Step 1: Record Trace to Container
+### Step 1: Record Traces to `.ubpf` Container
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ UBPFTRACE_OUTPUT_DIR=./examples/getting_started ./bin/ubpftrace -c "./examples/getting_started/target_app 10" examples/getting_started/05_trace_container_cat.bt
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ UBPFTRACE_OUTPUT_DIR=./examples/getting_started \
+  ./bin/ubpftrace -c "./examples/getting_started/target_app 10" \
+  examples/getting_started/05_trace_container_cat.bt
+```
+```text
+Attached 1 probe
+[TargetApp] Starting execution of 10 tasks (~1.0 seconds)...
+[TS 114217681441997 ns] Task 0 processed data_size=10 bytes
+[TS 114217781527321 ns] Task 1 processed data_size=27 bytes
+[TS 114217881603528 ns] Task 2 processed data_size=44 bytes
+[TS 114217981679604 ns] Task 3 processed data_size=61 bytes
+[TS 114218081744611 ns] Task 4 processed data_size=78 bytes
+[TS 114218181821639 ns] Task 5 processed data_size=95 bytes
+[TS 114218281898567 ns] Task 6 processed data_size=12 bytes
+[TS 114218381973682 ns] Task 7 processed data_size=29 bytes
+[TS 114218482054056 ns] Task 8 processed data_size=46 bytes
+[TS 114218582136084 ns] Task 9 processed data_size=63 bytes
+[TargetApp] Progress: 10 / 10 tasks (current task_id=9, data_size=63)
+[TargetApp] Finished all tasks successfully.
 ```
 
-### Step 2: Inspect Container Metadata (`ubpftrace-cat --info`)
+### Step 2: Inspect Container Metadata & LZ4 Compression (`ubpftrace-cat --info`)
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --info examples/getting_started/*.ubpf
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --info examples/getting_started/*.ubpf
 ```
-
 ```text
 ============================================================
-  UBPFTRACE CONTAINER METADATA: /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started/ubpftrace_1014833_node_3650575891.ubpf
+  UBPFTRACE CONTAINER METADATA: examples/getting_started/ubpftrace_1057033_node_3650575891.ubpf
 ============================================================
-  Job ID            : 1014833
+  Job ID            : 1057033
   Node ID           : 3650575891
   Hostname          : login18
-  File Size         : 628 bytes (0.00 MB)
+  File Size         : 631 bytes (0.00 MB)
   Codec             : LZ4
-  Base Monotonic Ts : 113086565071405 ns
-  Base Wallclock Ts : 1789708470377293701 ns
+  Base Monotonic Ts : 114217709000751 ns
+  Base Wallclock Ts : 1789709601521223056 ns
   Total Chunks      : 1
   Total Records     : 10
   Total Dropped     : 0
   Uncompressed Size : 840 bytes
-  Compressed Size   : 356 bytes (Savings: 57.6%)
+  Compressed Size   : 359 bytes (Savings: 57.3%)
 
 Chunk Details:
   Chunk#  Offset      UncompSize    CompSize      Records   Dropped   CRC32     
   ----------------------------------------------------------------------
-  0       128         840           356           10        0         OK
+  0       128         840           359           10        0         OK
 ============================================================
 ```
 
-### Step 3: Dump Chronological Events (`ubpftrace-cat --dump`)
+### Step 3: Dump Chronological Event Stream (`ubpftrace-cat --dump`)
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
 ```
-
 ```text
-[113086.565397s] [Node 3650575891] [Rank 0] [Event 1] [TS 113086538302792 ns] Task 0 processed data_size=10 bytes
-[113086.639523s] [Node 3650575891] [Rank 0] [Event 1] [TS 113086638374488 ns] Task 1 processed data_size=27 bytes
-[113086.739971s] [Node 3650575891] [Rank 0] [Event 1] [TS 113086738434281 ns] Task 2 processed data_size=44 bytes
-[113086.840313s] [Node 3650575891] [Rank 0] [Event 1] [TS 113086838493513 ns] Task 3 processed data_size=61 bytes
-[113086.939643s] [Node 3650575891] [Rank 0] [Event 1] [TS 113086938548448 ns] Task 4 processed data_size=78 bytes
-[113087.040020s] [Node 3650575891] [Rank 0] [Event 1] [TS 113087038608231 ns] Task 5 processed data_size=95 bytes
-[113087.140420s] [Node 3650575891] [Rank 0] [Event 1] [TS 113087138666732 ns] Task 6 processed data_size=12 bytes
-[113087.239836s] [Node 3650575891] [Rank 0] [Event 1] [TS 113087238724933 ns] Task 7 processed data_size=29 bytes
-[113087.340422s] [Node 3650575891] [Rank 0] [Event 1] [TS 113087338798913 ns] Task 8 processed data_size=46 bytes
-[113087.440803s] [Node 3650575891] [Rank 0] [Event 1] [TS 113087438877120 ns] Task 9 processed data_size=63 bytes
+[114217.709356s] [Node 3650575891] [Rank 0] [Event 1] [TS 114217681441997 ns] Task 0 processed data_size=10 bytes
+
+[114217.783379s] [Node 3650575891] [Rank 0] [Event 1] [TS 114217781527321 ns] Task 1 processed data_size=27 bytes
+
+[114217.882765s] [Node 3650575891] [Rank 0] [Event 1] [TS 114217881603528 ns] Task 2 processed data_size=44 bytes
+
+[114217.983148s] [Node 3650575891] [Rank 0] [Event 1] [TS 114217981679604 ns] Task 3 processed data_size=61 bytes
+
+[114218.083583s] [Node 3650575891] [Rank 0] [Event 1] [TS 114218081744611 ns] Task 4 processed data_size=78 bytes
+
+[114218.182912s] [Node 3650575891] [Rank 0] [Event 1] [TS 114218181821639 ns] Task 5 processed data_size=95 bytes
+
+[114218.283432s] [Node 3650575891] [Rank 0] [Event 1] [TS 114218281898567 ns] Task 6 processed data_size=12 bytes
+
+[114218.383205s] [Node 3650575891] [Rank 0] [Event 1] [TS 114218381973682 ns] Task 7 processed data_size=29 bytes
+
+[114218.483654s] [Node 3650575891] [Rank 0] [Event 1] [TS 114218482054056 ns] Task 8 processed data_size=46 bytes
+
+[114218.584114s] [Node 3650575891] [Rank 0] [Event 1] [TS 114218582136084 ns] Task 9 processed data_size=63 bytes
 ```
 
-### Step 4: Export to Perfetto / Chrome Tracing Format
+### Step 4: Export to Google Chrome Tracing / Perfetto Format
 ```bash
-sgkim@login05:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --chrome timeline.json examples/getting_started/*.ubpf
+sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --chrome timeline.json examples/getting_started/*.ubpf
 ```
-
 ```text
 Exported Chrome Trace Event format to: timeline.json
 ```
-Open **[ui.perfetto.dev](https://ui.perfetto.dev)** and drag-and-drop `timeline.json` to inspect interactive timelines, rank swimlanes, and execution latencies.
+Open **[ui.perfetto.dev](https://ui.perfetto.dev)** in your browser and drag-and-drop `timeline.json` to inspect interactive timelines, rank swimlanes, and execution latencies.
 
 ---
 
