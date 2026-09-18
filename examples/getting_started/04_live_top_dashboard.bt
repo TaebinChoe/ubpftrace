@@ -6,12 +6,53 @@
 //  shared JSON snapshots every interval (e.g. --live-ms 300 or -L 1).
 //  ubpftrace-top aggregates these snapshots across cluster nodes live in the terminal.
 //
-// Run:
-//  Terminal 1:
-//    UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" examples/getting_started/04_live_top_dashboard.bt
+// How to Run (Step-by-Step Prompts):
+//  Terminal 1 (Launch Target Tracing with Live Snapshot Export):
+//    $ UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo \
+//      ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" \
+//      examples/getting_started/04_live_top_dashboard.bt
 //
-//  Terminal 2:
-//    ./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+//  Terminal 2 (Monitor Live Aggregations with ubpftrace-top):
+//    $ ./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+//
+// Expected Terminal 1 Output:
+//  Attached 1 probe
+//  [TargetApp] Starting execution of 30 tasks (~3.0 seconds)...
+//  [TargetApp] Progress: 10 / 30 tasks (current task_id=9, data_size=63)
+//  [TargetApp] Progress: 20 / 30 tasks (current task_id=19, data_size=33)
+//  [TargetApp] Progress: 30 / 30 tasks (current task_id=29, data_size=3)
+//  [TargetApp] Finished all tasks successfully.
+//
+//  @data_size_distribution:
+//  [8, 16)                5 |@@@@@@@@@@@@@@                                      |
+//  [16, 32)               6 |@@@@@@@@@@@@@@@@@                                   |
+//  [32, 64)               9 |@@@@@@@@@@@@@@@@@@@@@@@@@                           |
+//  [64, 128)             10 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@                        |
+//
+//  @total_bytes: 1470
+//  @total_tasks: 30
+//
+// Expected Terminal 2 Output (ubpftrace-top TUI Dashboard):
+//  ================================================================================
+//   ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+//  ================================================================================
+//   Snapshot Dir : /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started/.live_demo
+//   Active Nodes : 1 | Stragglers: 0 | Interval: 1s
+//  --------------------------------------------------------------------------------
+//
+//  [CLUSTER-WIDE METRIC AGGREGATIONS]
+//  Map Name                        Global Max    Global Min      Global Sum Entries
+//  --------------------------------------------------------------------------------
+//  AT_data_size_di                          2             1               7       4
+//  AT_total_bytes                         327           327             327       1
+//  AT_total_tasks                           7             7               7       1
+//
+//  [NODE TOPOLOGY & SYNC STATUS]
+//  Node ID   Hostname            Epoch     Latency Lag (ms)    Status
+//  ---------------------------------------------------------------------------
+//  3650575891login18             1         0.00                [HEALTHY]
+//
+//  [Press Ctrl+C to stop monitoring]
 // ============================================================================
 
 uprobe:./examples/getting_started/target_app:compute_task {

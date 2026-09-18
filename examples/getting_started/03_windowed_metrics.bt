@@ -5,8 +5,37 @@
 //  Calculates metrics bucketed into 1-second time epochs ($window = elapsed / 1s)
 //  and emits a rate-limited real-time event stream notification only once per window.
 //
-// Run:
-//  ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 30" examples/getting_started/03_windowed_metrics.bt
+// How to Run (Step-by-Step Prompts):
+//  1. Real-Time Terminal Run:
+//     $ ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 25" examples/getting_started/03_windowed_metrics.bt
+//
+//  2. High-Performance Container Run + Decoding with ubpftrace-cat:
+//     $ UBPFTRACE_OUTPUT_DIR=./examples/getting_started ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 25" examples/getting_started/03_windowed_metrics.bt
+//     $ ./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
+//
+// Expected Real-Time Output:
+//  Attached 1 probe
+//  [TargetApp] Starting execution of 25 tasks (~2.5 seconds)...
+//  [Stream @ 0 s] Window #0 started | Sample task_id=0, data_size=10
+//  [TargetApp] Progress: 10 / 25 tasks (current task_id=9, data_size=63)
+//  [Stream @ 1 s] Window #1 started | Sample task_id=10, data_size=80
+//  [TargetApp] Progress: 20 / 25 tasks (current task_id=19, data_size=33)
+//  [Stream @ 2 s] Window #2 started | Sample task_id=20, data_size=50
+//  [TargetApp] Progress: 25 / 25 tasks (current task_id=24, data_size=18)
+//  [TargetApp] Finished all tasks successfully.
+//
+//  @last_printed_window: 2
+//  @window_data_stats[2]: { .count = 5, .average = 52, .total = 260 }
+//  @window_data_stats[1]: { .count = 10, .average = 48, .total = 485 }
+//  @window_data_stats[0]: { .count = 10, .average = 53, .total = 535 }
+//  @window_task_count[2]: 5
+//  @window_task_count[1]: 10
+//  @window_task_count[0]: 10
+//
+// Expected ubpftrace-cat Decoded Output:
+//  [113086.565397s] [Node 3650575891] [Rank 0] [Event 1] [Stream @ 0 s] Window #0 started | Sample task_id=0, data_size=10
+//  [113087.565402s] [Node 3650575891] [Rank 0] [Event 1] [Stream @ 1 s] Window #1 started | Sample task_id=10, data_size=80
+//  [113088.565415s] [Node 3650575891] [Rank 0] [Event 1] [Stream @ 2 s] Window #2 started | Sample task_id=20, data_size=50
 // ============================================================================
 
 uprobe:./examples/getting_started/target_app:compute_task {

@@ -6,8 +6,20 @@
 //  and function arguments (arg0=task_id, arg1=data_size), and streams formatted
 //  events to standard output.
 //
-// Run:
-//  ./bin/ubpftrace -c "./examples/getting_started/target_app 10" examples/getting_started/01_function_tracing.bt
+// How to Run (Step-by-Step Prompts):
+//  $ make -C examples/getting_started
+//  $ ./bin/ubpftrace -c "./examples/getting_started/target_app 5" examples/getting_started/01_function_tracing.bt
+//
+// Expected Output:
+//  Attached 1 probe
+//  [TargetApp] Starting execution of 5 tasks (~0.5 seconds)...
+//  [TS 113086036814292 ns] compute_task() invoked -> task_id=0, data_size=10 bytes
+//  [TS 113086136885820 ns] compute_task() invoked -> task_id=1, data_size=27 bytes
+//  [TS 113086236946022 ns] compute_task() invoked -> task_id=2, data_size=44 bytes
+//  [TS 113086337005433 ns] compute_task() invoked -> task_id=3, data_size=61 bytes
+//  [TS 113086437060412 ns] compute_task() invoked -> task_id=4, data_size=78 bytes
+//  [TargetApp] Progress: 5 / 5 tasks (current task_id=4, data_size=78)
+//  [TargetApp] Finished all tasks successfully.
 // ============================================================================
 
 uprobe:./examples/getting_started/target_app:compute_task {
