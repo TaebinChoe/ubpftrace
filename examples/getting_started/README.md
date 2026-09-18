@@ -1,6 +1,6 @@
 # ubpftrace Getting Started Tutorial & Examples
 
-This directory contains minimal, self-contained examples demonstrating the five primary usage patterns of `ubpftrace`. Every file contains full, reproducible terminal prompts and real verbatim execution outputs.
+This directory contains minimal, self-contained examples demonstrating the five primary usage patterns of `ubpftrace`. Every file contains full, reproducible terminal commands and real verbatim execution outputs.
 
 ---
 
@@ -22,8 +22,10 @@ This directory contains minimal, self-contained examples demonstrating the five 
 ## 1. Build the Target Application
 
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ make -C examples/getting_started
+make -C examples/getting_started
 ```
+
+**Real Output:**
 ```text
 make: Entering directory '/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started'
 /usr/bin/gcc -O2 -g -fno-inline -fno-omit-frame-pointer -o target_app target_app.c
@@ -32,13 +34,16 @@ make: Leaving directory '/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples
 
 ---
 
-## 2. Step-by-Step Scenario Prompts & Real Outputs
+## 2. Step-by-Step Scenario Commands & Real Outputs
 
 ### Scenario 1: Function Entry & Argument Tracing
 Trace individual function calls in real time and inspect passed arguments:
+
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace -c "./examples/getting_started/target_app 5" examples/getting_started/01_function_tracing.bt
+./bin/ubpftrace -c "./examples/getting_started/target_app 5" examples/getting_started/01_function_tracing.bt
 ```
+
+**Real Output:**
 ```text
 Attached 1 probe
 [TargetApp] Starting execution of 5 tasks (~0.5 seconds)...
@@ -55,9 +60,12 @@ Attached 1 probe
 
 ### Scenario 2: Zero-Overhead In-Memory Map Aggregations
 Compute global counts, average data sizes, and power-of-2 logarithmic histograms directly in shared memory without disk I/O:
+
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace -c "./examples/getting_started/target_app 20" examples/getting_started/02_map_aggregation.bt
+./bin/ubpftrace -c "./examples/getting_started/target_app 20" examples/getting_started/02_map_aggregation.bt
 ```
+
+**Real Output:**
 ```text
 Attached 1 probe
 [TargetApp] Starting execution of 20 tasks (~2.0 seconds)...
@@ -80,9 +88,12 @@ Attached 1 probe
 
 ### Scenario 3: Periodic Time-Window Bucketing & Throttled Stream
 Bucket metrics into 1-second epochs (`$window_sec = elapsed / 1000000000`) and emit a throttled live stream notification once per window:
+
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 25" examples/getting_started/03_windowed_metrics.bt
+./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 25" examples/getting_started/03_windowed_metrics.bt
 ```
+
+**Real Output:**
 ```text
 Attached 1 probe
 [TargetApp] Starting execution of 25 tasks (~2.5 seconds)...
@@ -110,14 +121,14 @@ Monitor running metrics online in an interactive TUI dashboard:
 
 **Terminal 1 (Launch Application with Periodic Live Snapshots):**
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo \
+UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo \
   ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" \
   examples/getting_started/04_live_top_dashboard.bt
 ```
 
 **Terminal 2 (Launch `ubpftrace-top` Dashboard):**
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
 ```
 
 **Verbatim `ubpftrace-top` TUI Screen:**
@@ -154,30 +165,14 @@ Offload high-volume event streams to LZ4-compressed `.ubpf` container files with
 
 **Step 1: Record Trace to Container:**
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ UBPFTRACE_OUTPUT_DIR=./examples/getting_started \
+UBPFTRACE_OUTPUT_DIR=./examples/getting_started \
   ./bin/ubpftrace -c "./examples/getting_started/target_app 10" \
   examples/getting_started/05_trace_container_cat.bt
-```
-```text
-Attached 1 probe
-[TargetApp] Starting execution of 10 tasks (~1.0 seconds)...
-[TS 114217681441997 ns] Task 0 processed data_size=10 bytes
-[TS 114217781527321 ns] Task 1 processed data_size=27 bytes
-[TS 114217881603528 ns] Task 2 processed data_size=44 bytes
-[TS 114217981679604 ns] Task 3 processed data_size=61 bytes
-[TS 114218081744611 ns] Task 4 processed data_size=78 bytes
-[TS 114218181821639 ns] Task 5 processed data_size=95 bytes
-[TS 114218281898567 ns] Task 6 processed data_size=12 bytes
-[TS 114218381973682 ns] Task 7 processed data_size=29 bytes
-[TS 114218482054056 ns] Task 8 processed data_size=46 bytes
-[TS 114218582136084 ns] Task 9 processed data_size=63 bytes
-[TargetApp] Progress: 10 / 10 tasks (current task_id=9, data_size=63)
-[TargetApp] Finished all tasks successfully.
 ```
 
 **Step 2: Inspect Container Metadata & LZ4 Compression (`ubpftrace-cat --info`):**
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --info examples/getting_started/*.ubpf
+./bin/ubpftrace-cat --info examples/getting_started/*.ubpf
 ```
 ```text
 ============================================================
@@ -205,7 +200,7 @@ Chunk Details:
 
 **Step 3: Dump Chronological Event Stream (`ubpftrace-cat --dump`):**
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
+./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
 ```
 ```text
 [114217.709356s] [Node 3650575891] [Rank 0] [Event 1] [TS 114217681441997 ns] Task 0 processed data_size=10 bytes
@@ -231,7 +226,7 @@ sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-ca
 
 **Step 4: Export to Google Chrome Tracing / Perfetto Format:**
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./bin/ubpftrace-cat --chrome timeline.json examples/getting_started/*.ubpf
+./bin/ubpftrace-cat --chrome timeline.json examples/getting_started/*.ubpf
 ```
 ```text
 Exported Chrome Trace Event format to: timeline.json
@@ -244,5 +239,5 @@ Open **[ui.perfetto.dev](https://ui.perfetto.dev)** in your browser and open `ti
 
 To run all 5 scenarios automatically:
 ```bash
-sgkim@login18:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace$ ./examples/getting_started/run.sh
+./examples/getting_started/run.sh
 ```
