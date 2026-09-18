@@ -2,6 +2,9 @@
 
 This directory contains curated, production-ready `.bt` preset scripts for diagnosing performance bottlenecks across **Traditional HPC Simulations** and **Large-Scale Distributed AI / LLM Training** workloads.
 
+> [!TIP]
+> If you are new to `ubpftrace` and looking for basic tutorial scripts and step-by-step examples, start with **[`examples/getting_started/`](../examples/getting_started/)** and the **[Getting Started Guide](../docs/getting_started.md)**.
+
 ---
 
 ## 📋 Catalog of Presets

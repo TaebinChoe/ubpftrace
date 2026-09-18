@@ -1,0 +1,23 @@
+// ============================================================================
+// Getting Started - Scenario 4: Live Cluster Dashboard with ubpftrace-top
+//
+// Description:
+//  Records in-memory metrics that are automatically exported out-of-band to
+//  shared JSON snapshots every interval (e.g. --live-ms 300 or -L 1).
+//  ubpftrace-top aggregates these snapshots across cluster nodes live in the terminal.
+//
+// Run:
+//  Terminal 1:
+//    UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" examples/getting_started/04_live_top_dashboard.bt
+//
+//  Terminal 2:
+//    ./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+// ============================================================================
+
+uprobe:./examples/getting_started/target_app:compute_task {
+    $size = arg1;
+
+    @total_tasks = count();
+    @total_bytes = sum($size);
+    @data_size_distribution = hist($size);
+}

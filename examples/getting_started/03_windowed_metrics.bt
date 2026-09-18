@@ -1,0 +1,26 @@
+// ============================================================================
+// Getting Started - Scenario 3: Periodic Windowed Aggregation & Throttled Stream
+//
+// Description:
+//  Calculates metrics bucketed into 1-second time epochs ($window = elapsed / 1s)
+//  and emits a rate-limited real-time event stream notification only once per window.
+//
+// Run:
+//  ./bin/ubpftrace --no-warnings -c "./examples/getting_started/target_app 30" examples/getting_started/03_windowed_metrics.bt
+// ============================================================================
+
+uprobe:./examples/getting_started/target_app:compute_task {
+    $window_sec = elapsed / 1000000000;
+    $size = arg1;
+
+    // 1. In-memory windowed map statistics (bounded by number of seconds)
+    @window_task_count[$window_sec] = count();
+    @window_data_stats[$window_sec] = stats($size);
+
+    // 2. Throttled event notification: print once at the start of each new second window
+    if ($window_sec != @last_printed_window) {
+        @last_printed_window = $window_sec;
+        printf("[Stream @ %lu s] Window #%lu started | Sample task_id=%d, data_size=%d\n",
+               $window_sec, $window_sec, arg0, $size);
+    }
+}

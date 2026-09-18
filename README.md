@@ -135,13 +135,16 @@ Verify the installation:
 
 ---
 
-## 🚀 1-Minute Quick Start
+## 🚀 Quick Start & Getting Started Tutorial
 
-### 1. Tracing a Standard Command One-Liner
-Trace dynamic memory allocations in `/bin/ls` without `sudo`:
+For a complete step-by-step tutorial covering the 5 fundamental usage patterns of `ubpftrace` (Function Tracing, In-Memory BPF Maps, Time-Window Aggregations, Live Cluster Top, and Container Offloading), see:
 
+* 📖 **[Getting Started Documentation Guide](docs/getting_started.md)**
+* 💻 **[Getting Started Example Directory (`examples/getting_started/`)](examples/getting_started/)**
+
+Run all 5 getting started scenarios with a single command:
 ```bash
-./bin/ubpftrace -c "/bin/ls" -e 'uprobe:libc:malloc { printf("malloc(%d bytes)\n", arg0); @count = count(); }'
+./examples/getting_started/run.sh
 ```
 
 ---
@@ -151,7 +154,7 @@ Trace dynamic memory allocations in `/bin/ls` without `sudo`:
 The repository includes ready-to-run test cases under the [`examples/`](examples) directory.
 
 ### Run All Integration Tests
-Execute the automated test suite verifying all 6 subsystems (compiles sample apps automatically):
+Execute the automated test suite verifying all subsystems (compiles sample apps automatically):
 
 ```bash
 ./run_tests.sh

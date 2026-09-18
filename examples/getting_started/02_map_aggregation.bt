@@ -1,0 +1,20 @@
+// ============================================================================
+// Getting Started - Scenario 2: In-Memory BPF Map Aggregations
+//
+// Description:
+//  Aggregates call counts, min/max/average statistics, and data size power-of-2
+//  logarithmic histograms directly inside RAM using lock-free BPF maps.
+//  Zero disk I/O overhead during execution; results are summarized at exit.
+//
+// Run:
+//  ./bin/ubpftrace -c "./examples/getting_started/target_app 25" examples/getting_started/02_map_aggregation.bt
+// ============================================================================
+
+uprobe:./examples/getting_started/target_app:compute_task {
+    $size = arg1;
+
+    // In-memory aggregations
+    @total_tasks = count();
+    @data_stats = stats($size);
+    @data_size_hist = hist($size);
+}

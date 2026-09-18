@@ -1062,6 +1062,11 @@ extern "C" void bpftime_agent_main(const gchar *data, gboolean *stay_resident)
 						map_obj["max_entries"] = map.attr.max_ents;
 						nlohmann::json entries = nlohmann::json::object();
 
+						bool is_percpu = (map.attr.type == (uint32_t)bpf_map_type::BPF_MAP_TYPE_PERCPU_HASH ||
+						                  map.attr.type == (uint32_t)bpf_map_type::BPF_MAP_TYPE_PERCPU_ARRAY);
+						int ncpu = is_percpu ? sysconf(_SC_NPROCESSORS_ONLN) : 1;
+						if (ncpu <= 0) ncpu = 1;
+
 						if (auto array_opt = map.try_get_array_map_impl()) {
 							auto *arr = *array_opt;
 							for (uint32_t idx = 0; idx < map.attr.max_ents; ++idx) {
@@ -1095,9 +1100,15 @@ extern "C" void bpftime_agent_main(const gchar *data, gboolean *stay_resident)
 										key_str = hex_buf;
 									}
 									if (map.attr.value_size == sizeof(uint64_t)) {
-										entries[key_str] = *reinterpret_cast<const uint64_t *>(val_ptr);
+										const uint64_t *p64 = reinterpret_cast<const uint64_t *>(val_ptr);
+										uint64_t total_val = 0;
+										for (int c = 0; c < ncpu; ++c) total_val += p64[c];
+										entries[key_str] = total_val;
 									} else if (map.attr.value_size == sizeof(uint32_t)) {
-										entries[key_str] = *reinterpret_cast<const uint32_t *>(val_ptr);
+										const uint32_t *p32 = reinterpret_cast<const uint32_t *>(val_ptr);
+										uint32_t total_val = 0;
+										for (int c = 0; c < ncpu; ++c) total_val += p32[c];
+										entries[key_str] = total_val;
 									} else {
 										entries[key_str] = 1;
 									}

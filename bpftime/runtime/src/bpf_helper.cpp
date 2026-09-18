@@ -443,8 +443,6 @@ uint64_t bpf_ringbuf_output(uint64_t rb, uint64_t data, uint64_t size,
 		SPDLOG_WARN(
 			"Currently only supports ringbuf_output with flags=0");
 	}
-	bpftime::hpc::ubpf_agent_manager::instance().log_event(
-		2, (const void *)(uintptr_t)data, static_cast<uint32_t>(size));
 	auto buf = bpftime_ringbuf_reserve(fd, size);
 	if (!buf) {
 		SPDLOG_ERROR("Failed to reserve when executing ringbuf output");
@@ -495,8 +493,6 @@ uint64_t bpf_ringbuf_discard(uint64_t data, uint64_t flags, uint64_t, uint64_t,
 uint64_t bpf_perf_event_output(uint64_t ctx, uint64_t map, uint64_t flags,
 			       uint64_t data, uint64_t size)
 {
-	bpftime::hpc::ubpf_agent_manager::instance().log_event(
-		3, (const void *)(uintptr_t)data, static_cast<uint32_t>(size));
 	int32_t current_cpu = my_sched_getcpu();
 	if (unlikely(current_cpu == -1)) {
 		SPDLOG_ERROR(

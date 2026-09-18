@@ -168,12 +168,17 @@ bool parse_ubpf_file(const std::string &filepath, DecodedFile &df) {
 
                 if (rec_hdr->payload_len > 0) {
                     const char *payload_ptr = reinterpret_cast<const char *>(uncomp_buf.data() + offset + sizeof(ubpf_event_record_header));
-                    // Check if null-terminated or string payload
-                    size_t str_len = rec_hdr->payload_len;
-                    if (str_len > 0 && payload_ptr[str_len - 1] == '\0') {
-                        str_len--;
+                    if (rec_hdr->event_type == 1) {
+                        size_t str_len = rec_hdr->payload_len;
+                        if (str_len > 0 && payload_ptr[str_len - 1] == '\0') {
+                            str_len--;
+                        }
+                        ev.payload = std::string(payload_ptr, str_len);
+                    } else {
+                        char bin_buf[128];
+                        snprintf(bin_buf, sizeof(bin_buf), "[Binary Payload: %u bytes]", rec_hdr->payload_len);
+                        ev.payload = bin_buf;
                     }
-                    ev.payload = std::string(payload_ptr, str_len);
                 }
 
                 df.events.push_back(ev);
