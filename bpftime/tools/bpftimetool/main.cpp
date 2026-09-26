@@ -229,7 +229,7 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 		bpftime_initialize_global_shm(
-			shm_open_type::SHM_CREATE_OR_OPEN);
+			shm_open_type::SHM_REMOVE_AND_CREATE);
 		auto runtime_config = bpftime::construct_runtime_config_from_env();
 		bpftime_set_runtime_config(std::move(runtime_config));
 		auto filename = std::string(argv[2]);

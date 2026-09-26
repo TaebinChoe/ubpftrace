@@ -7,7 +7,7 @@ target_app: target_app.c
 	$(CC) $(CFLAGS) -o target_app target_app.c
 
 clean:
-	rm -f target_app *.ubpf *.json
+	rm -f target_app *.ubt *.ubpf *.json
 	rm -rf .ubpftrace_live*
 
 .PHONY: all clean

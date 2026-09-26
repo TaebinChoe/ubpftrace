@@ -1,0 +1,62 @@
+// ============================================================================
+// trace_hpc.bt - Comprehensive HPC MPI & Grid Computation Bottleneck Tracer
+// ============================================================================
+
+// 1. Trace Grid Computation (Tracking Workload Skew & Iterations)
+uprobe:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app:simulate_grid_computation {
+    $rank = arg0;
+    $iter = arg1;
+    @comp_start[tid] = nsecs;
+    @compute_calls[$rank] = count();
+    @grid_step_total[$rank] = count();
+    @iter_min[$rank] = min($iter);
+    @iter_max[$rank] = max($iter);
+    @grid_skew_score = max($iter);
+}
+
+// 2. Trace Collective Synchronization & Barrier Latencies (Straggler Impact)
+uprobe:/opt/cray/pe/lib64/libmpi_gnu.so:MPI_Barrier {
+    if (@comp_start[tid]) {
+        $comp_dur_us = (nsecs - @comp_start[tid]) / 1000;
+        printf("[HPC Compute] Compute time: %u us\n", $comp_dur_us);
+        @comp_dur_min = min($comp_dur_us);
+        @comp_dur_max = max($comp_dur_us);
+        @comp_dur_stats = stats($comp_dur_us);
+        @comp_dur_hist = hist($comp_dur_us);
+        _ = delete(@comp_start, tid);
+    }
+    @barrier_start[tid] = nsecs;
+    @barrier_calls = count();
+}
+
+uretprobe:/opt/cray/pe/lib64/libmpi_gnu.so:MPI_Barrier /@barrier_start[tid]/ {
+    $barrier_dur_us = (nsecs - @barrier_start[tid]) / 1000;
+    printf("[MPI Barrier] Barrier wait time: %u us\n", $barrier_dur_us);
+    @barrier_min_us = min($barrier_dur_us);
+    @barrier_max_us = max($barrier_dur_us);
+    @barrier_stats_us = stats($barrier_dur_us);
+    @barrier_latency_hist = hist($barrier_dur_us);
+    _ = delete(@barrier_start, tid);
+}
+
+// 3. Trace Collective Reductions
+uprobe:/opt/cray/pe/lib64/libmpi_gnu.so:MPI_Allreduce {
+    @allreduce_start[tid] = nsecs;
+    @allreduce_calls = count();
+    @reduction_rank_calls[tid] = count();
+}
+
+uretprobe:/opt/cray/pe/lib64/libmpi_gnu.so:MPI_Allreduce /@allreduce_start[tid]/ {
+    $allreduce_dur_us = (nsecs - @allreduce_start[tid]) / 1000;
+    printf("[MPI Allreduce] Allreduce latency: %u us\n", $allreduce_dur_us);
+    @allreduce_min_us = min($allreduce_dur_us);
+    @allreduce_max_us = max($allreduce_dur_us);
+    @allreduce_stats_us = stats($allreduce_dur_us);
+    _ = delete(@allreduce_start, tid);
+}
+
+END {
+    printf("\n============================================================\n");
+    printf("  HPC SIMULATION & MPI PERFORMANCE SUMMARY\n");
+    printf("============================================================\n");
+}

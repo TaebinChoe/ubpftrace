@@ -486,11 +486,11 @@ pwrite64 fd=10 offset=7340032 bytes=1048576 -> OST 76
   └── I/O Worker ─────────┘   (Epoch-     └── I/O Worker ─────────┘   (Epoch-
       │                        Protected)     │                        Protected)
       ▼ (2MB Aligned LZ4)                     ▼ (2MB Aligned LZ4)
-  `ubpftrace_<job>_node_0.ubpf`           `ubpftrace_<job>_node_1.ubpf`
+  `ubpftrace_<job>_node_0.ubt`            `ubpftrace_<job>_node_1.ubt`
                       │                       │
                       └───────────┬───────────┘
                                   ▼
-                     `ubpftrace-cat` Decoder / Merger
+                     `ubt-cat` Decoder / Merger
                      ├── --info   : Chunk metadata & compression ratio
                      ├── --dump   : Formatted text event dump
                      ├── --merge  : Multi-stream min-heap chronological merge
@@ -514,53 +514,52 @@ salloc -N 2 -C cpu -q interactive -t 00:10:00 -- \
 
 ### 2. Generated Tracing Artifacts
 
-1. **Per-Node Trace Containers (`.ubpf`)**:
-   `ubpftrace_<jobid>_node_<nid>.ubpf` contains 2MB stripe-aligned, LZ4-compressed binary chunks with CRC32 integrity verification. Exactly one file is written per physical compute node, protecting Lustre Metadata Servers (MDS) from file explosion.
+1. **Per-Node Trace Containers (`.ubt`)**:
+   `ubpftrace_<jobid>_node_<nid>.ubt` contains 2MB stripe-aligned, LZ4-compressed binary chunks with CRC32 integrity verification. Exactly one file is written per physical compute node, protecting Lustre Metadata Servers (MDS) from file explosion.
 2. **Consolidated Summary Profile (`_summary.json`)**:
    `ubpftrace_<jobid>_summary.json` is generated at `MPI_Finalize` via a Score-P style binomial tree reduction across an isolated private communicator (`MPI_Comm_dup`), aggregating per-rank recorded and dropped event counts.
 
-### 3. Inspecting & Decoding Traces with `ubpftrace-cat`
+### 3. Inspecting & Decoding Traces with `ubt-cat`
 
-The repository includes `ubpftrace-cat` in `bin/` for high-throughput out-of-band trace analysis:
+The repository includes `ubt-cat` (`ubpftrace-cat` alias) in `bin/` for high-throughput out-of-band trace analysis:
 
-## ⚡ Real-Time Observability & Monitoring Options
+## ⚡ Dynamic Runtime Injection & Hot-Patching (`ubt-attach`)
 
-While post-run time-bucketed analysis (Scenario B) guarantees maximum application throughput and strict zero-jitter invariants, `ubpftrace` provides two powerful real-time observability modes:
+In production HPC environments, large-scale simulations may run for days across hundreds of nodes. Restarting workloads to add profiling wrappers or recompiling binaries with instrumentation is often prohibitive. `ubpftrace` solves this with **zero-restart dynamic runtime injection** via `ubt-attach`:
 
-### 1. Periodic Metric Snapshotting (Scenario A)
-Inspect running aggregations without blocking compute threads or issuing global MPI collectives:
-- `-L, --live <SEC>`: Interval (in seconds) for periodic Scenario A metric snapshotting.
-- `--live-ms <MS>`: Sub-second interval (in milliseconds) down to 50ms for rapid metric inspection.
-- `--live-dir <DIR>`: Custom output directory for out-of-band atomic JSON snapshots (`node_<nid>.json`). Snapshots are generated via hidden temporary files and atomic POSIX `rename()` to guarantee parse-tear-free telemetry.
+1. **Unmodified Process Injection**: Probes are attached into live, running processes via `ptrace`/Frida without restarting or preloading libraries.
+2. **Lock-Free In-Memory Aggregations**: Telemetry maps accumulate in shared memory (`/dev/shm`) with zero disk I/O interference.
+3. **Dynamic Detachment (0 Overhead)**: When diagnostic capture completes, probes are cleanly unhooked at runtime while target workloads continue at native speed.
+4. **Hot-Patching / Re-Attachment**: New or modified `.bt` probe scripts can be hot-patched into the running processes via fast IPC Unix domain sockets without re-injecting the agent.
 
-```bash
-# Snapshot metrics every 500ms to a shared directory:
-./bin/ubpftrace --live-ms 500 --live-dir /tmp/ubpf_snapshots -c "examples/apps/hpc_app" presets/mpi_straggler_detector.bt
-```
-
-### 2. Low-Latency Micro-Buffered Live Event Streaming
-Stream formatted traces (`printf(...)`) in real time to stdout with sub-frame latency and strict intra-node chronological monotonicity:
-- `--stream`: Enable micro-buffered live terminal event streaming.
-- `--stream-flush-ms <MS>`: Soft-timer flush timeout in milliseconds (default: `20ms`).
-- `--stream-buffer-kb <KB>`: Buffer size threshold in kilobytes (default: `8KB`).
+### Usage Examples:
 
 ```bash
-# Stream trace events with 20ms maximum latency:
-./bin/ubpftrace --stream --stream-flush-ms 20 --stream-buffer-kb 8 -c "examples/apps/puts_app" -e 'uprobe:libc:puts { printf("puts: %s\n", str(arg0)); }'
+# 1. Attach to a single process by PID:
+./bin/ubt-attach -p 68092 -s ./examples/apps/trace_hpc.bt
+
+# 2. Attach to all matching processes on the local node:
+./bin/ubt-attach --comm hpc_app -s ./examples/apps/trace_hpc.bt
+
+# 3. Fan-out dynamic injection across all nodes in a Slurm job:
+./bin/ubt-attach --job 58893883 --comm hpc_app -s ./examples/apps/trace_hpc.bt
+
+# 4. Safely detach probes from all ranks across the cluster (0 overhead):
+./bin/ubt-attach --job 58893883 --comm hpc_app -d
 ```
 
 ---
 
-## 📊 Live Cluster Dashboard (`ubpftrace-top`)
+## 📊 Live Cluster Dashboard (`ubt-top`)
 
-`ubpftrace-top` is a real-time cluster monitoring dashboard that continuously polls and aggregates Scenario A metric snapshots across all compute nodes:
+`ubt-top` is a real-time cluster monitoring dashboard that continuously polls and aggregates Scenario A metric snapshots across all compute nodes:
 
 ```
 ================================================================================
- ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+ ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
 ================================================================================
- Snapshot Dir : /tmp/ubpf_snapshots
- Active Nodes : 64 | Stragglers: 2 | Interval: 1s
+ Snapshot Dir : /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces/.ubpftrace_live_58893883
+ Active Nodes : 2 | Stragglers: 0 | Interval: 1s
 --------------------------------------------------------------------------------
 
 [CLUSTER-WIDE METRIC AGGREGATIONS]
@@ -572,52 +571,51 @@ Map Name                        Global Max    Global Min      Global Sum Entries
 [NODE TOPOLOGY & SYNC STATUS]
 Node ID   Hostname            Epoch     Latency Lag (ms)    Status         
 ---------------------------------------------------------------------------
-1001      nid004220           142       2.10                [HEALTHY]
-1002      nid004221           142       1.85                [HEALTHY]
-1003      nid004222           138       420.50              [STRAGGLER]
+0         nid004155           142       0.00                [HEALTHY]
+1         nid004156           142       0.85                [HEALTHY]
 ```
 
 ### Usage Modes:
 - **Interactive ANSI TUI**:
   ```bash
-  ./bin/ubpftrace-top --dir /tmp/ubpf_snapshots --interval 1
+  ./bin/ubt-top -j 58893883 --interval 1
   ```
 - **Automated JSON Streaming Pipeline (for Grafana / PromQL ingest)**:
   ```bash
-  ./bin/ubpftrace-top --dir /tmp/ubpf_snapshots --json --interval 2
+  ./bin/ubt-top -j 58893883 --json --interval 2
   ```
 - **Single-Shot Verification**:
   ```bash
-  ./bin/ubpftrace-top --dir /tmp/ubpf_snapshots --once
+  ./bin/ubt-top -j 58893883 --once
   ```
 
 ---
 
-## 🛠️ Offline Trace Processing Toolchain (`ubpftrace-cat`)
+## 🛠️ Offline Trace Processing Toolchain (`ubt-cat`)
 
-`ubpftrace-cat` is a high-performance offline decoder for `.ubpf` 2MB stripe-aligned container files:
+`ubt-cat` is a high-performance offline decoder for `.ubt` / `.ubpt` 2MB stripe-aligned container files:
 
 ### 1. Inspect Container Metadata & Compression Savings
 ```bash
-./bin/ubpftrace-cat --info traces/ubpftrace_1111_node_0.ubpf
+./bin/ubt-cat --info traces/ubpftrace_58893883_node_0.ubpt
 ```
 Outputs total chunk counts, uncompressed vs compressed sizes, CRC32 block validations, and LZ4 compression savings.
 
 ### 2. Stream Formatted Text Event Logs
 ```bash
-./bin/ubpftrace-cat --dump traces/ubpftrace_1111_node_0.ubpf
+./bin/ubt-cat --dump traces/ubpftrace_58893883_node_0.ubpt
 ```
 
 ### 3. Multi-Node Chronological Merge (K-Way Min-Heap)
 ```bash
 # Globally order events from hundreds of node containers into a unified timestamp stream:
-./bin/ubpftrace-cat --merge traces/ubpftrace_1111_node_*.ubpf
+./bin/ubt-cat -j 58893883 -m -d
 ```
 
 ### 4. Export to Google Chrome / Perfetto Timeline
 ```bash
 # Export container events to Google Chrome Trace Event format:
-./bin/ubpftrace-cat --chrome timeline.json traces/ubpftrace_1111_node_0.ubpf
+./bin/ubt-cat --chrome timeline.json traces/ubpftrace_58893883_node_*.ubpt
 
 # Load timeline.json in https://ui.perfetto.dev or chrome://tracing
 ```
@@ -645,6 +643,9 @@ Presets are automatically discovered and can be referenced by relative path:
 
 # Trace NCCL collective skew across multi-GPU ranks:
 srun -N 2 -n 8 ./bin/ubpftrace -c "torchrun train.py" presets/nccl_collective_skew.bt
+
+# Or inject presets dynamically into running jobs:
+./bin/ubt-attach --job 58893883 --comm hpc_app -s presets/mpi_straggler_detector.bt
 ```
 
 ---
@@ -669,6 +670,7 @@ srun -N 2 -n 8 ./bin/ubpftrace -c "torchrun train.py" presets/nccl_collective_sk
                   │   │  2. Maps CPU registers into pt_regs frame │  │
                   │   │  3. Executes eBPF in LLVM JIT VM          │  │
                   │   │  4. Writes output to POSIX SHM RingBuf    │  │
+                  │   │  5. Listens on Unix IPC for Hot-Patching  │  │
                   │   └───────────────────────────────────────────┘  │
                   │                                                  │
                   │   int calculate(int a, int b) {                  │
@@ -680,7 +682,7 @@ srun -N 2 -n 8 ./bin/ubpftrace -c "torchrun train.py" presets/nccl_collective_sk
 1. **Self-Bootstrapping Mock Syscall Server**:
    When `ubpftrace` starts, it preloads `libbpftime-syscall-server.so`. This intercepts `SYS_bpf` and `SYS_perf_event_open` syscalls, creating eBPF programs and maps inside POSIX shared memory (`/dev/shm/bpftime_shm`) instead of calling the Linux kernel.
 2. **Inline Trampoline Hooking (Frida-Gum)**:
-   When tracing targets with `-c <command>`, `ubpftrace` preloads `libbpftime-agent.so`. The agent resolves the target function symbol in the ELF `.symtab` / `.dynsym` and overwrites the function prologue with an atomic 5-byte `JMP` instruction pointing to a trampoline.
+   When tracing targets with `-c <command>` or injecting at runtime with `ubt-attach`, `libbpftime-agent.so` resolves the target function symbol in the ELF `.symtab` / `.dynsym` and overwrites the function prologue with an atomic 5-byte `JMP` instruction pointing to a trampoline.
 3. **Register Mapping & JIT Execution**:
    The trampoline captures general-purpose CPU registers into a `pt_regs` structure, sets up argument registers, and executes the compiled eBPF program directly inside the application process using LLVM JIT (`llvmbpf`).
 4. **Zero Context Switching**:
@@ -694,8 +696,9 @@ srun -N 2 -n 8 ./bin/ubpftrace -c "torchrun train.py" presets/nccl_collective_sk
 ubpftrace/
 ├── bin/
 │   ├── ubpftrace                      # Main CLI compiler & tracer executable
-│   ├── ubpftrace-cat                  # Standalone trace container decoder, merger & Chrome exporter
-│   ├── ubpftrace-top                  # Real-time cluster dashboard & JSON telemetry streamer
+│   ├── ubt-attach                     # Dynamic multi-node runtime injector & hot-patching CLI
+│   ├── ubt-top                        # Real-time cluster dashboard & JSON telemetry streamer
+│   ├── ubt-cat                        # Standalone trace container decoder, merger & Chrome exporter
 │   ├── libbpftime-agent.so            # Userspace runtime agent (Frida-Gum + JIT)
 │   ├── libbpftime-syscall-server.so   # Mock syscall server for libbpf
 │   └── test_hpc_shm_io                # Concurrency & zero-jitter SHM stress benchmark
@@ -704,6 +707,10 @@ ubpftrace/
 │       ├── include/hpc/               # HPC data plane headers (Lustre, SHM, Reducer, Live, Stream)
 │       └── src/hpc/                   # HPC data plane implementations
 ├── src/                               # bpftrace script compiler frontend (AST, LLVM IR, parser)
+├── tools/                             # Companion CLI tool implementations
+│   ├── ubpftrace_attach.cpp           # ubt-attach implementation
+│   ├── ubpftrace_top.cpp              # ubt-top implementation
+│   └── ubpftrace_cat.cpp              # ubt-cat implementation
 ├── presets/                           # Production HPC & Distributed AI diagnostic presets
 │   ├── ai_checkpoint_lustre.bt        # Lustre OST parallel I/O profiler
 │   ├── mpi_straggler_detector.bt      # Multi-node MPI barrier & collective straggler analyzer
@@ -712,6 +719,8 @@ ubpftrace/
 │   ├── cuda_sync_bubbles.bt           # CUDA host-side synchronization stall tracker
 │   └── nccl_collective_skew.bt        # NCCL multi-GPU collective tail latency analyzer
 ├── examples/                          # Ready-to-run interactive examples & sample applications
+│   ├── getting_started/               # Step-by-step tutorial suite
+│   ├── apps/                          # Multi-node HPC and MPI target workloads
 │   ├── calc.bt                        # Traces user-defined calculate(int, int) function
 │   ├── puts.bt                        # Traces libc:puts string function
 │   ├── malloc.bt                      # Traces libc:malloc memory allocations & hist()

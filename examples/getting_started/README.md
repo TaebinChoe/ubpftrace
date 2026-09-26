@@ -13,8 +13,8 @@ This directory contains minimal, self-contained examples demonstrating the five 
 | [`01_function_tracing.bt`](01_function_tracing.bt) | Function Tracing & Argument Extraction | `uprobe`, `arg0`, `arg1`, `printf()`, `nsecs` |
 | [`02_map_aggregation.bt`](02_map_aggregation.bt) | In-Memory BPF Map Aggregation | `count()`, `stats()`, `hist()`, zero I/O overhead |
 | [`03_windowed_metrics.bt`](03_windowed_metrics.bt) | Periodic Time-Window Aggregations | `$window = elapsed / 1s`, rate-limited `printf()` |
-| [`04_live_top_dashboard.bt`](04_live_top_dashboard.bt) | Real-Time Cluster Monitoring | `ubpftrace-top`, `--live-ms 300`, JSON snapshots |
-| [`05_trace_container_cat.bt`](05_trace_container_cat.bt) | High-Speed Trace Containers | `ubpftrace-cat`, `.ubpf` containers, LZ4 compression |
+| [`04_live_top_dashboard.bt`](04_live_top_dashboard.bt) | Real-Time Cluster Monitoring | `ubt-top`, `--live-ms 300`, JSON snapshots |
+| [`05_trace_container_cat.bt`](05_trace_container_cat.bt) | High-Speed Trace Containers | `ubt-cat`, `.ubt` containers, LZ4 compression |
 | [`run.sh`](run.sh) | Automated test runner | Executes all 5 scenarios end-to-end |
 
 ---
@@ -116,7 +116,7 @@ Attached 1 probe
 
 ---
 
-### Scenario 4: Live Cluster Dashboard with `ubpftrace-top`
+### Scenario 4: Live Cluster Dashboard with `ubt-top`
 Monitor running metrics online in an interactive TUI dashboard:
 
 **Terminal 1 (Launch Application with Periodic Live Snapshots):**
@@ -126,15 +126,15 @@ UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo \
   examples/getting_started/04_live_top_dashboard.bt
 ```
 
-**Terminal 2 (Launch `ubpftrace-top` Dashboard):**
+**Terminal 2 (Launch `ubt-top` Dashboard):**
 ```bash
-./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+./bin/ubt-top -d ./examples/getting_started/.live_demo
 ```
 
-**Verbatim `ubpftrace-top` TUI Screen:**
+**Verbatim `ubt-top` TUI Screen:**
 ```text
 ================================================================================
- ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+ ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
 ================================================================================   
  Snapshot Dir : ./examples/getting_started/.live_demo
  Active Nodes : 1 | Stragglers: 0 | Interval: 1s
@@ -160,8 +160,8 @@ Node ID   Hostname            Epoch     Latency Lag (ms)    Status
 
 ---
 
-### Scenario 5: High-Speed Trace Containers (`.ubpf`) & `ubpftrace-cat`
-Offload high-volume event streams to LZ4-compressed `.ubpf` container files with background I/O workers, then inspect post-mortem:
+### Scenario 5: High-Speed Trace Containers (`.ubt`) & `ubt-cat`
+Offload high-volume event streams to LZ4-compressed `.ubt` container files with background I/O workers, then inspect post-mortem:
 
 **Step 1: Record Trace to Container:**
 ```bash
@@ -170,13 +170,13 @@ UBPFTRACE_OUTPUT_DIR=./examples/getting_started \
   examples/getting_started/05_trace_container_cat.bt
 ```
 
-**Step 2: Inspect Container Metadata & LZ4 Compression (`ubpftrace-cat --info`):**
+**Step 2: Inspect Container Metadata & LZ4 Compression (`ubt-cat --info`):**
 ```bash
-./bin/ubpftrace-cat --info examples/getting_started/*.ubpf
+./bin/ubt-cat --info examples/getting_started/*.ubt
 ```
 ```text
 ============================================================
-  UBPFTRACE CONTAINER METADATA: examples/getting_started/ubpftrace_1057033_node_3650575891.ubpf
+  UBPFTRACE CONTAINER METADATA: examples/getting_started/ubpftrace_1057033_node_3650575891.ubt
 ============================================================
   Job ID            : 1057033
   Node ID           : 3650575891
@@ -198,9 +198,9 @@ Chunk Details:
 ============================================================
 ```
 
-**Step 3: Dump Chronological Event Stream (`ubpftrace-cat --dump`):**
+**Step 3: Dump Chronological Event Stream (`ubt-cat --dump`):**
 ```bash
-./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
+./bin/ubt-cat --dump examples/getting_started/*.ubt
 ```
 ```text
 [114217.709356s] [Node 3650575891] [Rank 0] [Event 1] [TS 114217681441997 ns] Task 0 processed data_size=10 bytes
@@ -226,7 +226,7 @@ Chunk Details:
 
 **Step 4: Export to Google Chrome Tracing / Perfetto Format:**
 ```bash
-./bin/ubpftrace-cat --chrome timeline.json examples/getting_started/*.ubpf
+./bin/ubt-cat --chrome timeline.json examples/getting_started/*.ubt
 ```
 ```text
 Exported Chrome Trace Event format to: timeline.json
@@ -235,9 +235,28 @@ Open **[ui.perfetto.dev](https://ui.perfetto.dev)** in your browser and open `ti
 
 ---
 
+### Scenario 6: Dynamic Runtime Injection & Hot-Patching on Running HPC Clusters (`ubt-attach`)
+
+For profiling long-running applications without restarting or modifying binaries:
+
+```bash
+# 1. Attach to running target dynamically:
+./bin/ubt-attach --comm target_app -s examples/getting_started/04_live_top_dashboard.bt
+
+# 2. Monitor live telemetry:
+./bin/ubt-top -d ./examples/getting_started/.live_demo
+
+# 3. Detach cleanly at zero overhead:
+./bin/ubt-attach --comm target_app -d
+```
+
+For the complete multi-node cluster walkthrough, see **[Scenario 6 in Getting Started Guide](../../docs/getting_started.md#8-scenario-6-dynamic-runtime-injection--hot-patching-on-running-hpc-clusters-ubt-attach)**.
+
+---
+
 ## 3. Automated End-to-End Test Suite
 
-To run all 5 scenarios automatically:
+To run all basic scenarios automatically:
 ```bash
 ./examples/getting_started/run.sh
 ```

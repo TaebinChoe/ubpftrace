@@ -1,15 +1,16 @@
 # HPC, MPI & Lustre Parallel Storage Guide
 
-This guide details how to deploy and scale `ubpftrace` across multi-node supercomputing clusters (e.g. NERSC Perlmutter, ALCF Polaris, OLCF Frontier) with Slurm, MPI, and Lustre parallel filesystems.
+This guide details how to deploy and scale `ubpftrace` across multi-node supercomputing clusters (e.g. NERSC Perlmutter, ALCF Polaris, OLCF Frontier) with Slurm, MPI, Lustre parallel filesystems, and dynamic zero-restart runtime injection (`ubt-attach`).
 
 ---
 
 ## Table of Contents
 1. [Zero-Jitter Invariants for HPC](#1-zero-jitter-invariants-for-hpc)
 2. [Multi-Node Slurm & MPI Deployment](#2-multi-node-slurm--mpi-deployment)
-3. [Lustre Parallel Filesystem Optimizations](#3-lustre-parallel-filesystem-optimizations)
-4. [Score-P Style Isolated MPI Reduction](#4-score-p-style-isolated-mpi-reduction)
-5. [Production Launch Script Examples](#5-production-launch-script-examples)
+3. [Dynamic Runtime Injection on Running MPI Jobs (ubt-attach)](#3-dynamic-runtime-injection-on-running-mpi-jobs-ubt-attach)
+4. [Lustre Parallel Filesystem Optimizations](#4-lustre-parallel-filesystem-optimizations)
+5. [Score-P Style Isolated MPI Reduction](#5-score-p-style-isolated-mpi-reduction)
+6. [Production Launch Script Examples](#6-production-launch-script-examples)
 
 ---
 
@@ -28,8 +29,8 @@ Traditional profilers and kernel-space tracers often introduce operating system 
 
 ## 2. Multi-Node Slurm & MPI Deployment
 
-### Running with `srun`
-To trace a multi-node MPI job on Slurm:
+### Running at Job Launch with `srun`
+To trace a multi-node MPI job at startup:
 
 ```bash
 # Set output directory for trace containers and summary
@@ -50,19 +51,70 @@ mpirun -np 64 -npernode 8 \
 
 ---
 
-## 3. Lustre Parallel Filesystem Optimizations
+## 3. Dynamic Runtime Injection on Running MPI Jobs (`ubt-attach`)
+
+In production HPC supercomputing environments, long-running production simulations may execute for days across hundreds of nodes. Restarting jobs to add profiling wrappers or compiling binaries with instrumentation is prohibitive.
+
+`ubpftrace` enables **zero-restart dynamic runtime injection**:
+
+```mermaid
+flowchart LR
+    subgraph SlurmJob ["Running Multi-Node MPI Application"]
+        Node0["nid004155 (Ranks 0..1)"]
+        Node1["nid004156 (Ranks 2..3)"]
+    end
+
+    Injector["ubt-attach --job <JOBID> -s trace.bt"] -->|srun --overlap| Node0
+    Injector -->|srun --overlap| Node1
+
+    Node0 -->|Live Telemetry /dev/shm| Dash["ubt-top -j <JOBID>"]
+    Node1 -->|Live Telemetry /dev/shm| Dash
+```
+
+### Step-by-Step Workflow:
+
+1. **Verify Target Application Running Across Nodes**:
+   ```bash
+   srun --overlap -N 2 --ntasks-per-node=1 bash -c 'hostname; pgrep -a hpc_app'
+   ```
+
+2. **Dynamically Inject Probes Across All Nodes**:
+   ```bash
+   ./bin/ubt-attach --job 58893883 --comm hpc_app -s ./examples/apps/trace_hpc.bt
+   ```
+
+3. **Monitor Live Aggregated Metrics (`ubt-top`)**:
+   ```bash
+   ./bin/ubt-top -j 58893883
+   ```
+
+4. **Hot-Patch Modified Scripts via Fast IPC (`[REFRESH]`)**:
+   ```bash
+   # Re-attaching updated scripts instantly refreshes resident agents over Unix sockets:
+   ./bin/ubt-attach --job 58893883 --comm hpc_app -s ./presets/mpi_straggler_detector.bt
+   ```
+
+5. **Cleanly Detach Probes (0 Overhead)**:
+   ```bash
+   ./bin/ubt-attach --job 58893883 --comm hpc_app -d
+   ```
+   All probes are unhooked, returning target ranks to full native execution speed without restarting.
+
+---
+
+## 4. Lustre Parallel Filesystem Optimizations
 
 On large-scale parallel storage like Lustre, writing individual trace files from thousands of MPI ranks causes severe Metadata Server (MDS) lock contention and destroys storage performance.
 
 `ubpftrace` solves this with an HPC storage data plane:
 
 ```
-Compute Ranks on Node 0 (Ranks 0..15) ──> Local SHM Buffer ──> 1 File: trace_node_0.ubpf
-Compute Ranks on Node 1 (Ranks 16..31) ─> Local SHM Buffer ──> 1 File: trace_node_1.ubpf
+Compute Ranks on Node 0 (Ranks 0..15) ──> Local SHM Buffer ──> 1 File: trace_node_0.ubpt
+Compute Ranks on Node 1 (Ranks 16..31) ─> Local SHM Buffer ──> 1 File: trace_node_1.ubpt
 ```
 
 1. **Strictly 1 Container File Per Physical Node**:
-   Regardless of whether a node runs 4 or 128 MPI ranks, all local ranks write to a shared memory buffer. Only **one** dedicated worker thread per node writes to disk (`trace_job<id>_node<id>.ubpf`).
+   Regardless of whether a node runs 4 or 128 MPI ranks, all local ranks write to a shared memory buffer. Only **one** dedicated worker thread per node writes to disk (`ubpftrace_<jobid>_node_<nid>.ubpt`).
 2. **2MB Lustre OST Stripe Alignment**:
    Container chunks are aligned to 2MB boundaries (`LUSTRE_STRIPE_BLOCK_SIZE = 2 * 1024 * 1024`) matching the default Lustre OST stripe geometry.
 3. **Direct I/O (`O_DIRECT`) Bypass**:
@@ -77,7 +129,7 @@ Compute Ranks on Node 1 (Ranks 16..31) ─> Local SHM Buffer ──> 1 File: tra
 
 ---
 
-## 4. Score-P Style Isolated MPI Reduction
+## 5. Score-P Style Isolated MPI Reduction
 
 In **Scenario B (Post-Run Aggregation)**, `ubpftrace` eliminates file I/O completely during execution and reduces all cluster metrics at application exit:
 
@@ -106,7 +158,7 @@ sequenceDiagram
 
 ---
 
-## 5. Production Launch Script Examples
+## 6. Production Launch Script Examples
 
 Use the provided Slurm helper script [`scripts/run_mpi_srun.sh`](file:///pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/scripts/run_mpi_srun.sh):
 
@@ -135,6 +187,5 @@ srun ./bin/ubpftrace \
   ./presets/mpi_straggler_detector.bt
 
 # Post-mortem merge across all nodes
-./bin/ubpftrace-cat --merge ${UBPFTRACE_OUTPUT_DIR}/*.ubpf \
-  --chrome ${UBPFTRACE_OUTPUT_DIR}/perfetto_trace.json
+./bin/ubt-cat -j ${SLURM_JOB_ID} -m --chrome ${UBPFTRACE_OUTPUT_DIR}/perfetto_trace.json
 ```

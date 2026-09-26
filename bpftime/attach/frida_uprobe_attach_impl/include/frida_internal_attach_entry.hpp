@@ -3,6 +3,8 @@
 #include "frida_attach_entry.hpp"
 #include <frida-gum.h>
 #include <vector>
+#include <memory>
+#include <mutex>
 #include "frida_uprobe_attach_impl.hpp"
 namespace bpftime
 {
@@ -13,11 +15,13 @@ namespace attach
 // attaches or uretprobe attaches. This entry was related with a function
 // address
 class frida_internal_attach_entry {
+public:
 	void *function;
+private:
 	GumInterceptor *interceptor;
-	std::vector<frida_attach_entry *> user_attaches;
-	GumInvocationListener *uprobe_listener = nullptr;
-	GumInvocationListener *uretprobe_listener = nullptr;
+	mutable std::mutex attaches_mutex;
+	std::shared_ptr<const std::vector<frida_attach_entry *>> user_attaches;
+	GumInvocationListener *listener = nullptr;
 
 	friend class frida_attach_impl;
 
@@ -33,6 +37,10 @@ class frida_internal_attach_entry {
 	bool has_override() const;
 	bool has_uprobe_or_uretprobe() const;
 	void ensure_listener(int attach_type);
+	void detach_listener();
+	void add_user_attach(frida_attach_entry *entry);
+	void remove_user_attach(frida_attach_entry *entry);
+	bool empty_user_attaches() const;
 	void run_filter_callback(const pt_regs &regs) const;
 	void iterate_uprobe_callbacks(const pt_regs &regs) const;
 	void iterate_uretprobe_callbacks(const pt_regs &regs) const;

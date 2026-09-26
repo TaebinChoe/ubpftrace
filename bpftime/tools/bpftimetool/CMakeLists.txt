@@ -60,3 +60,8 @@ else()
 endif()
 
 install(TARGETS bpftimetool CONFIGURATIONS Release Debug RelWithDebInfo DESTINATION ~/.bpftime)
+
+add_custom_command(TARGET bpftimetool POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/bin
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:bpftimetool> ${CMAKE_SOURCE_DIR}/bin/bpftimetool
+)

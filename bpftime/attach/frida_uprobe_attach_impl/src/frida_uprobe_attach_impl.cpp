@@ -90,8 +90,7 @@ int frida_attach_impl::attach_at(void *func_addr,
 				 std::make_unique<frida_attach_entry>(
 					 std::move(ent)))
 			.first;
-	inner_attach->user_attaches.push_back(
-		inserted_attach_entry->second.get());
+	inner_attach->add_user_attach(inserted_attach_entry->second.get());
 	inserted_attach_entry->second->internal_attach = inner_attach.get();
 	return result;
 }
@@ -125,28 +124,17 @@ int frida_attach_impl::create_uprobe_override_at(void *func_addr,
 
 int frida_attach_impl::detach_by_id(int id)
 {
-	void *drop_func_addr = nullptr;
 	if (auto itr = attaches.find(id); itr != attaches.end()) {
 		auto p = itr->second->internal_attach;
-
-		auto &user_attaches = p->user_attaches;
-		auto tail =
-			std::remove_if(user_attaches.begin(),
-				       user_attaches.end(),
-				       [&](const auto &v) -> bool {
-					       return v == itr->second.get();
-				       });
-		user_attaches.resize(tail - user_attaches.begin());
-		attaches.erase(itr);
-		if (p->user_attaches.empty()) {
-			drop_func_addr = p->function;
+		p->remove_user_attach(itr->second.get());
+		if (p->empty_user_attaches()) {
+			p->detach_listener();
 		}
+		attaches.erase(itr);
 	} else {
 		SPDLOG_ERROR("Unable to find attach id {}", id);
 		errno = -ENOENT;
 	}
-	if (drop_func_addr)
-		internal_attaches.erase(drop_func_addr);
 	return 0;
 }
 void frida_attach_impl::iterate_attaches(attach_iterate_callback cb)
@@ -160,11 +148,15 @@ int frida_attach_impl::detach_by_func_addr(const void *func)
 {
 	if (auto itr = internal_attaches.find((void *)func);
 	    itr != internal_attaches.end()) {
-		auto uattaches = itr->second->user_attaches;
-		for (auto attach_entry : uattaches) {
-			attaches.erase(attach_entry->self_id);
+		for (auto attach_itr = attaches.begin(); attach_itr != attaches.end(); ) {
+			if (attach_itr->second->internal_attach == itr->second.get()) {
+				itr->second->remove_user_attach(attach_itr->second.get());
+				attach_itr = attaches.erase(attach_itr);
+			} else {
+				++attach_itr;
+			}
 		}
-		internal_attaches.erase(itr);
+		itr->second->detach_listener();
 		return 0;
 	} else {
 		return -ENOENT;

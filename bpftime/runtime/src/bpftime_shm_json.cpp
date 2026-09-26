@@ -186,6 +186,8 @@ static int import_shm_handler_from_json(bpftime_shm &shm, json value, int fd)
 			.target_fd = target_fd,
 		};
 		shm.add_bpf_link(fd, &args);
+	} else if (handler_type == "epoll_handler") {
+		shm.add_epoll(fd);
 	} else {
 		SPDLOG_ERROR("Unsupported handler type {}", handler_type);
 		return -1;
@@ -214,15 +216,41 @@ int bpftime::bpftime_import_shm_from_json(bpftime_shm &shm,
 	json j;
 	file >> j;
 	file.close();
+
+	// Begin new session: wipes previous state and advances epoch_seq
+	shm.begin_new_session();
+
+	std::vector<std::pair<int, json>> sorted_items;
 	for (auto &[key, value] : j.items()) {
-		int fd = std::stoi(key);
+		sorted_items.emplace_back(std::stoi(key), value);
+	}
+	std::sort(sorted_items.begin(), sorted_items.end(),
+		  [](const auto &a, const auto &b) { return a.first < b.first; });
+
+	// Pass 1: Import maps, progs, perf events, epoll
+	for (const auto &[fd, value] : sorted_items) {
+		std::string handler_type = value.value("type", "");
+		if (handler_type == "bpf_link_handler") continue;
 		SPDLOG_INFO("import handler fd {} {}", fd, value.dump());
 		int res = import_shm_handler_from_json(shm, value, fd);
 		if (res < 0) {
-			SPDLOG_ERROR("Failed to import handler from json");
+			SPDLOG_ERROR("Failed to import handler fd {} from json", fd);
 			return -1;
 		}
 	}
+
+	// Pass 2: Import link handlers (progs and perf events now fully present)
+	for (const auto &[fd, value] : sorted_items) {
+		std::string handler_type = value.value("type", "");
+		if (handler_type != "bpf_link_handler") continue;
+		SPDLOG_INFO("import link handler fd {} {}", fd, value.dump());
+		int res = import_shm_handler_from_json(shm, value, fd);
+		if (res < 0) {
+			SPDLOG_ERROR("Failed to import link handler fd {} from json", fd);
+			return -1;
+		}
+	}
+
 	return 0;
 }
 

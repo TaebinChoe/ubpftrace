@@ -20,7 +20,7 @@ namespace {
 void test_basic_shm_and_worker() {
     std::cout << "[Test 1] Initializing POSIX SHM segment & Container Writer..." << std::endl;
     const char *shm_name = "/ubpftrace_test_shm_phase2";
-    const std::string container_path = "/tmp/ubpftrace_test_phase2.ubpf";
+    const std::string container_path = "/tmp/ubpftrace_test_phase2.ubt";
 
     auto *shm = ubpf_shm_create_or_attach(1001, 0, true, shm_name);
     assert(shm != nullptr);

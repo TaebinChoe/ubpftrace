@@ -33,6 +33,12 @@ ubpf_agent_manager::~ubpf_agent_manager() {
 }
 
 bool ubpf_agent_manager::init() {
+    if (const char *dis = std::getenv("UBPFTRACE_DISABLE_AGENT")) {
+        if (std::strcmp(dis, "1") == 0 || std::strcmp(dis, "true") == 0) {
+            return false;
+        }
+    }
+
     std::lock_guard<std::mutex> lock(init_mutex_);
     if (initialized_.load(std::memory_order_acquire)) {
         return true;
@@ -49,12 +55,16 @@ bool ubpf_agent_manager::init() {
     hostname_ = topo.nodename;
     is_creator_ = (local_rank_ == 0);
 
-    // 2. Resolve output directory for Lustre .ubpf container files
+    // 2. Resolve output directory for Lustre .ubpt container files
     std::string out_dir = ".";
     if (const char *env_dir = std::getenv("UBPFTRACE_OUTPUT_DIR")) {
         out_dir = env_dir;
-    } else if (const char *scratch = std::getenv("SCRATCH")) {
-        out_dir = scratch;
+    } else if (std::filesystem::exists("/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces")) {
+        out_dir = "/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces";
+    } else if (std::filesystem::exists("/pscratch/sd/s/sgkim/tchoe_home/traces")) {
+        out_dir = "/pscratch/sd/s/sgkim/tchoe_home/traces";
+    } else {
+        out_dir = "./traces";
     }
 
     // Ensure output directory exists
@@ -65,7 +75,7 @@ bool ubpf_agent_manager::init() {
     }
 
     output_filepath_ = out_dir + "/ubpftrace_" + std::to_string(job_id_) +
-                       "_node_" + std::to_string(node_id_) + ".ubpf";
+                       "_node_" + std::to_string(node_id_) + ".ubpt";
 
     // 3. Attach or create node-local POSIX SHM segment
     shm_ = ubpf_shm_create_or_attach(job_id_, node_id_, is_creator_);
@@ -74,7 +84,7 @@ bool ubpf_agent_manager::init() {
     }
 
     // Check environment variables for Scenario A live snapshotting and live micro-streaming
-    uint64_t live_interval_ms = 0;
+    uint64_t live_interval_ms = 200; // Default to 200ms for dynamic runtime injection
     if (const char *env_live_ms = std::getenv("UBPFTRACE_LIVE_INTERVAL_MS")) {
         live_interval_ms = std::strtoull(env_live_ms, nullptr, 10);
     } else if (const char *env_live_sec = std::getenv("UBPFTRACE_LIVE_INTERVAL_SEC")) {
@@ -105,7 +115,7 @@ bool ubpf_agent_manager::init() {
     if (is_creator_) {
         if (live_interval_ms > 0) {
             live_exporter_ = std::make_unique<ubpf_live_exporter>(
-                job_id_, node_id_, hostname_, live_dir, live_interval_ms * 1000000ULL);
+                job_id_, node_id_, hostname_, live_dir, live_interval_ms * 1000000ULL, shm_);
         }
 
         if (stream_enabled) {

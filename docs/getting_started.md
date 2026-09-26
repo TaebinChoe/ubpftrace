@@ -20,8 +20,8 @@ This tutorial provides a complete walkthrough of `ubpftrace` from your first pro
 
 Upon completion, all executables are placed in `bin/`:
 - **`bin/ubpftrace`**: Main compiler frontend and dynamic tracer.
-- **`bin/ubpftrace-top`**: Real-time TUI cluster monitoring dashboard.
-- **`bin/ubpftrace-cat`**: Standalone container reader, decoder, and Perfetto/Chrome-trace exporter.
+- **`bin/ubt-top`**: Real-time TUI cluster monitoring dashboard (`ubpftrace-top` alias).
+- **`bin/ubt-cat`**: Standalone container reader, decoder, and Perfetto/Chrome-trace exporter (`ubpftrace-cat` alias).
 
 ---
 
@@ -196,9 +196,9 @@ Attached 1 probe
 
 ---
 
-## 6. Scenario 4: Live Cluster Dashboard with `ubpftrace-top`
+## 6. Scenario 4: Live Cluster Dashboard with `ubt-top`
 
-`ubpftrace` can export lock-free map snapshots periodically out-of-band to a shared directory. `ubpftrace-top` reads these snapshots and renders a cluster-wide aggregated TUI dashboard without interrupting target processes.
+`ubpftrace` can export lock-free map snapshots periodically out-of-band to a shared directory. `ubt-top` reads these snapshots and renders a cluster-wide aggregated TUI dashboard without interrupting target processes.
 
 ### Script: [`04_live_top_dashboard.bt`](../examples/getting_started/04_live_top_dashboard.bt)
 ```bt
@@ -218,15 +218,15 @@ UBPFTRACE_LIVE_DIR=./examples/getting_started/.live_demo \
   examples/getting_started/04_live_top_dashboard.bt
 ```
 
-### Step 2: Open Terminal 2 and Launch `ubpftrace-top`
+### Step 2: Open Terminal 2 and Launch `ubt-top`
 ```bash
-./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+./bin/ubt-top -d ./examples/getting_started/.live_demo
 ```
 
-**Real `ubpftrace-top` Dashboard Output:**
+**Real `ubt-top` Dashboard Output:**
 ```text
 ================================================================================
- ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+ ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
 ================================================================================   
  Snapshot Dir : ./examples/getting_started/.live_demo
  Active Nodes : 1 | Stragglers: 0 | Interval: 1s
@@ -252,9 +252,9 @@ Node ID   Hostname            Epoch     Latency Lag (ms)    Status
 
 ---
 
-## 7. Scenario 5: High-Speed Trace Containers (`.ubpf`) & `ubpftrace-cat`
+## 7. Scenario 5: High-Speed Trace Containers (`.ubt`) & `ubt-cat`
 
-When detailed event traces are required, `ubpftrace` offloads events to an unpinned ring buffer. A dedicated background I/O worker compresses chunks with LZ4 and writes them into high-performance `.ubpf` containers.
+When detailed event traces are required, `ubpftrace` offloads events to an unpinned ring buffer. A dedicated background I/O worker compresses chunks with LZ4 and writes them into high-performance `.ubt` containers.
 
 ### Script: [`05_trace_container_cat.bt`](../examples/getting_started/05_trace_container_cat.bt)
 ```bt
@@ -264,7 +264,7 @@ uprobe:./examples/getting_started/target_app:compute_task {
 }
 ```
 
-### Step 1: Record Traces to `.ubpf` Container
+### Step 1: Record Traces to `.ubt` Container
 ```bash
 UBPFTRACE_OUTPUT_DIR=./examples/getting_started \
   ./bin/ubpftrace -c "./examples/getting_started/target_app 10" \
@@ -289,15 +289,15 @@ Attached 1 probe
 [TargetApp] Finished all tasks successfully.
 ```
 
-### Step 2: Inspect Container Metadata & LZ4 Compression (`ubpftrace-cat --info`)
+### Step 2: Inspect Container Metadata & LZ4 Compression (`ubt-cat --info`)
 ```bash
-./bin/ubpftrace-cat --info examples/getting_started/*.ubpf
+./bin/ubt-cat --info examples/getting_started/*.ubt
 ```
 
 **Real Output:**
 ```text
 ============================================================
-  UBPFTRACE CONTAINER METADATA: examples/getting_started/ubpftrace_1057033_node_3650575891.ubpf
+  UBPFTRACE CONTAINER METADATA: examples/getting_started/ubpftrace_1057033_node_3650575891.ubt
 ============================================================
   Job ID            : 1057033
   Node ID           : 3650575891
@@ -319,9 +319,9 @@ Chunk Details:
 ============================================================
 ```
 
-### Step 3: Dump Chronological Event Stream (`ubpftrace-cat --dump`)
+### Step 3: Dump Chronological Event Stream (`ubt-cat --dump`)
 ```bash
-./bin/ubpftrace-cat --dump examples/getting_started/*.ubpf
+./bin/ubt-cat --dump examples/getting_started/*.ubt
 ```
 
 **Real Output:**
@@ -349,7 +349,7 @@ Chunk Details:
 
 ### Step 4: Export to Google Chrome Tracing / Perfetto Format
 ```bash
-./bin/ubpftrace-cat --chrome timeline.json examples/getting_started/*.ubpf
+./bin/ubt-cat --chrome timeline.json examples/getting_started/*.ubt
 ```
 
 **Real Output:**
@@ -360,15 +360,374 @@ Open **[ui.perfetto.dev](https://ui.perfetto.dev)** in your browser and open `ti
 
 ---
 
-## 8. Summary & Next Steps
+### 8. Scenario 6: Dynamic Runtime Injection & Hot-Patching on Running HPC Clusters (`ubt-attach`)
+
+In production HPC environments, large-scale simulations may run for days across hundreds of nodes. Restarting workloads to add profiling wrappers or recompiling binaries with instrumentation is often prohibitive. `ubpftrace` solves this with **zero-restart dynamic runtime injection**:
+
+1. **Unmodified Process Injection**: Probes are attached into live, running processes via `ptrace`/Frida without restarting or preloading libraries.
+2. **Lock-Free In-Memory Aggregations**: Telemetry maps accumulate in shared memory (`/dev/shm`) with zero disk I/O interference.
+3. **Dynamic Detachment (0 Overhead)**: When diagnostic capture completes, probes are cleanly unhooked at runtime while target workloads continue at native speed.
+4. **Hot-Patching / Re-Attachment**: New or modified `.bt` probe scripts can be hot-patched into the running processes via fast IPC Unix domain sockets without re-injecting the agent.
+
+---
+
+### Step 1: Launch the Unmodified HPC Application
+
+All nodes execute [`examples/apps/hpc_app.c`](../examples/apps/hpc_app.c), a multi-rank MPI simulation featuring halo exchanges, imbalanced grid physics (`simulate_grid_computation`), barrier synchronization (`MPI_Barrier`), and global reductions (`MPI_Allreduce`):
+
+```bash
+# Launch across 2 compute nodes (4 ranks total) in continuous mode (0)
+srun -N 2 --ntasks-per-node=2 ./examples/apps/hpc_app 0 > /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/hpc_app.log 2>&1 &
+```
+
+**Verify Target Liveness Across Nodes:**
+```bash
+srun --overlap -N 2 --ntasks-per-node=1 bash -c 'hostname; pgrep -a hpc_app'
+```
+
+**Real Output:**
+```text
+nid004155
+68092 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+68093 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+nid004156
+1026218 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+1026219 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+```
+
+---
+
+### Step 2: Verify Initial Cluster State (`ubt-top` Waiting)
+
+Before attaching any probes, verify that `ubt-top` reflects a clean, uninstrumented state:
+
+```bash
+./bin/ubt-top -j 58893883 --once
+```
+
+**Real Output:**
+```text
+================================================================================
+ ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+================================================================================
+ Snapshot Dir : /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces/.ubpftrace_live_58893883
+ Active Nodes : 0 | Stragglers: 0 | Interval: 1s
+--------------------------------------------------------------------------------
+
+  [Waiting for node snapshots in /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces/.ubpftrace_live_58893883...]
+
+[Press Ctrl+C to stop monitoring]
+```
+
+---
+
+### Step 3: Dynamic Multi-Node Injection with `ubt-attach`
+
+Target script [`examples/apps/trace_hpc.bt`](../examples/apps/trace_hpc.bt) instruments grid computation duration, barrier stall times, and reduction latencies:
+
+```bt
+// examples/apps/trace_hpc.bt
+uprobe:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app:simulate_grid_computation {
+    $rank = arg0;
+    $iter = arg1;
+    @comp_start[tid] = nsecs;
+    @compute_calls[$rank] = count();
+    @grid_step_total[$rank] = count();
+    @iter_min[$rank] = min($iter);
+    @iter_max[$rank] = max($iter);
+    @grid_skew_score = max($iter);
+}
+
+uprobe:/opt/cray/pe/lib64/libmpi_gnu.so:MPI_Barrier {
+    if (@comp_start[tid]) {
+        $comp_dur_us = (nsecs - @comp_start[tid]) / 1000;
+        printf("[HPC Compute] Compute time: %u us\n", $comp_dur_us);
+        @comp_dur_min = min($comp_dur_us);
+        @comp_dur_max = max($comp_dur_us);
+        @comp_dur_stats = stats($comp_dur_us);
+        @comp_dur_hist = hist($comp_dur_us);
+        _ = delete(@comp_start, tid);
+    }
+    @barrier_start[tid] = nsecs;
+    @barrier_calls = count();
+}
+
+uretprobe:/opt/cray/pe/lib64/libmpi_gnu.so:MPI_Barrier /@barrier_start[tid]/ {
+    $barrier_dur_us = (nsecs - @barrier_start[tid]) / 1000;
+    printf("[MPI Barrier] Barrier wait time: %u us\n", $barrier_dur_us);
+    @barrier_min_us = min($barrier_dur_us);
+    @barrier_max_us = max($barrier_dur_us);
+    @barrier_stats_us = stats($barrier_dur_us);
+    @barrier_latency_hist = hist($barrier_dur_us);
+    _ = delete(@barrier_start, tid);
+}
+```
+
+**Attach to All Ranks Across Cluster Nodes:**
+```bash
+srun --overlap -N 2 --ntasks-per-node=1 ./bin/ubt-attach --comm hpc_app -s ./examples/apps/trace_hpc.bt
+```
+
+**Real Output:**
+```text
+╔════════════════════════════════════════════════════════════════════╗
+║       ubt-attach: Dynamic Multi-Node Runtime Injector              ║
+╚════════════════════════════════════════════════════════════════════╝
+Node Context: nid004155
+╔════════════════════════════════════════════════════════════════════╗
+║       ubt-attach: Dynamic Multi-Node Runtime Injector              ║
+╚════════════════════════════════════════════════════════════════════╝
+Node Context: nid004156
+  [COMPILE-PROBES] Compiling trace_hpc.bt to eBPF manifest... SUCCESS
+  [COMPILE-PROBES] Compiling trace_hpc.bt to eBPF manifest... SUCCESS
+  [ACTIVATE-SHM] Activating eBPF runtime into persistent SHM... SUCCESS
+  [DISCOVER] Found 2 local processes matching 'hpc_app': [68092, 68093]
+  [ACTIVATE-SHM] Activating eBPF runtime into persistent SHM... SUCCESS
+  [DISCOVER] Found 2 local processes matching 'hpc_app': [1026218, 1026219]
+  [INJECT] Injecting libbpftime-agent.so into PID 68092... SUCCESS
+  [INJECT] Injecting libbpftime-agent.so into PID 1026218... SUCCESS
+  [INJECT] Injecting libbpftime-agent.so into PID 68093... SUCCESS
+  [INJECT] Injecting libbpftime-agent.so into PID 1026219... SUCCESS
+Summary: Injected into 2/2 processes successfully on nid004155.
+Summary: Injected into 2/2 processes successfully on nid004156.
+```
+
+---
+
+### Step 4: Stream Real-Time Cluster Aggregations with `ubt-top`
+
+Inspect the live cluster reduction dashboard:
+```bash
+./bin/ubt-top -j 58893883 --once
+```
+
+**Real Dashboard Output:**
+```text
+================================================================================                                      
+ ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+================================================================================
+ Snapshot Dir : /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces/.ubpftrace_live_58893883
+ Active Nodes : 2 | Stragglers: 0 | Interval: 1s
+--------------------------------------------------------------------------------
+
+[CLUSTER-WIDE METRIC AGGREGATIONS]
+Map Name                        Global Max    Global Min      Global Sum Entries
+--------------------------------------------------------------------------------
+@allreduce_ca                          984           984            1968       2
+@allreduce_ma                        43183         40234           83417       2
+@allreduce_mi                          240            60             300       2
+@allreduce_st                       471494        188111          659605       2
+@barrier_call                          984           984            1968       2
+@barrier_late                          968             1            1965      15
+@barrier_max_                       292188         72074          364262       2
+@barrier_min_                       140396         37981          178377       2
+@barrier_star               316855604914557309996132983790 936847871070011       3
+@barrier_stat                     23120398      11860102        34980500       2
+@comp_dur_his                          967             1            1967       8
+@comp_dur_max                       101389         80089          181478       2
+@comp_dur_min                        55967         23211           79178       2
+@comp_dur_sta                     14448029       3061178        17509207       2
+@comp_start                 316855602102507316855602102507 316855602102507       1
+@compute_call                          498           486            1968       4
+@grid_skew_sc                        21238          8932           30170       2
+@grid_step_to                          498           486            1968       4
+@iter_max                            10751          4368           30170       4
+@iter_min                            10158          3805           27734       4
+@reduction_ra                          498           486            1968       4
+
+[HISTOGRAM: @compute_call]
+           0 : [=========================] 498
+           1 : [======================== ] 486
+           2 : [=========================] 498
+           3 : [======================== ] 486
+
+[HISTOGRAM: @iter_max]
+           0 : [==========               ] 4564
+           1 : [==========               ] 4368
+           2 : [======================== ] 10487
+           3 : [=========================] 10751
+
+[HISTOGRAM: @iter_min]
+           0 : [=========                ] 3805
+           1 : [=========                ] 3848
+           2 : [======================== ] 9923
+           3 : [=========================] 10158
+
+[NODE TOPOLOGY & SYNC STATUS]
+Node ID   Hostname            Epoch     Latency Lag (ms)    Status         
+---------------------------------------------------------------------------
+0         nid004155           74        0.00                [HEALTHY]
+1         nid004156           74        0.87                [HEALTHY]
+
+[Press Ctrl+C to stop monitoring]
+```
+
+---
+
+### Step 5: Zero-Overhead Dynamic Detachment (`ubt-attach -d`)
+
+When tracing is complete, detach probes instantly across all nodes without interrupting or restarting `hpc_app`:
+
+```bash
+srun --overlap -N 2 --ntasks-per-node=1 ./bin/ubt-attach --comm hpc_app -d
+```
+
+**Real Output:**
+```text
+╔════════════════════════════════════════════════════════════════════╗
+║       ubt-attach: Dynamic Multi-Node Runtime Injector              ║
+╚════════════════════════════════════════════════════════════════════╝
+Node Context: nid004155
+╔════════════════════════════════════════════════════════════════════╗
+║       ubt-attach: Dynamic Multi-Node Runtime Injector              ║
+╚════════════════════════════════════════════════════════════════════╝
+Node Context: nid004156
+  [DISCOVER] Found 2 local processes matching 'hpc_app': [68092, 68093]
+  [DISCOVER] Found 2 local processes matching 'hpc_app': [1026218, 1026219]
+  [DETACH] Detaching probes from PID 68092... SUCCESS (ok)
+  [DETACH] Detaching probes from PID 68093... SUCCESS (ok)
+Summary: Detached from 2/2 processes successfully on nid004155.
+  [DETACH] Detaching probes from PID 1026218... SUCCESS (ok)
+  [DETACH] Detaching probes from PID 1026219... SUCCESS (ok)
+Summary: Detached from 2/2 processes successfully on nid004156.
+```
+
+---
+
+### Step 6: Verify Target Workload Uninterrupted Native Execution
+
+Confirm that all ranks continue executing at full native speed with zero residual tracing overhead:
+
+```bash
+srun --overlap -N 2 --ntasks-per-node=1 bash -c 'hostname; pgrep -a hpc_app'
+```
+
+**Real Output:**
+```text
+nid004155
+68092 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+68093 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+nid004156
+1026218 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+1026219 /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/apps/hpc_app 0
+```
+
+---
+
+### Step 7: Hot-Patching & Re-Attachment via IPC Socket Refresh (`[REFRESH]`)
+
+To re-attach or hot-patch a modified probe script with new telemetry maps, run `ubt-attach` again:
+
+```bash
+srun --overlap -N 2 --ntasks-per-node=1 ./bin/ubt-attach --comm hpc_app -s ./examples/apps/trace_hpc.bt
+```
+
+**Real Output:**
+```text
+╔════════════════════════════════════════════════════════════════════╗
+║       ubt-attach: Dynamic Multi-Node Runtime Injector              ║
+╚════════════════════════════════════════════════════════════════════╝
+Node Context: nid004155
+╔════════════════════════════════════════════════════════════════════╗
+║       ubt-attach: Dynamic Multi-Node Runtime Injector              ║
+╚════════════════════════════════════════════════════════════════════╝
+Node Context: nid004156
+  [COMPILE-PROBES] Compiling trace_hpc.bt to eBPF manifest... SUCCESS
+  [COMPILE-PROBES] Compiling trace_hpc.bt to eBPF manifest... SUCCESS
+  [ACTIVATE-SHM] Activating eBPF runtime into persistent SHM... SUCCESS
+  [DISCOVER] Found 2 local processes matching 'hpc_app': [68092, 68093]
+  [ACTIVATE-SHM] Activating eBPF runtime into persistent SHM... SUCCESS
+  [DISCOVER] Found 2 local processes matching 'hpc_app': [1026218, 1026219]
+  [REFRESH] Re-attached & refreshed probes in PID 68092... SUCCESS
+  [REFRESH] Re-attached & refreshed probes in PID 68093... SUCCESS
+Summary: Injected into 2/2 processes successfully on nid004155.
+  [REFRESH] Re-attached & refreshed probes in PID 1026218... SUCCESS
+  [REFRESH] Re-attached & refreshed probes in PID 1026219... SUCCESS
+Summary: Injected into 2/2 processes successfully on nid004156.
+```
+> [!TIP]
+> Notice the **`[REFRESH]`** step: `ubt-attach` detects the resident agent and instantly swaps probe links over Unix domain sockets with zero ptrace latency.
+
+---
+
+### Step 8: Inspect Multi-Node Trace Containers (`ubt-cat -i`)
+
+Verify chunk-level CRC32 integrity and LZ4 compression across nodes:
+
+```bash
+./bin/ubt-cat -j 58893883 -i
+```
+
+**Real Output:**
+```text
+============================================================
+  UBPFTRACE CONTAINER METADATA: traces/ubpftrace_58893883_node_1.ubpt
+============================================================
+  Job ID            : 58893883
+  Node ID           : 1
+  Hostname          : nid004156
+  File Size         : 105220 bytes (0.10 MB)
+  Codec             : LZ4
+  Base Monotonic Ts : 309981099570570 ns
+  Base Wallclock Ts : 1790427244421374401 ns
+  Total Chunks      : 73
+  Total Records     : 7037
+  Total Dropped     : 0
+  Uncompressed Size : 281480 bytes
+  Compressed Size   : 100420 bytes (Savings: 64.3%)
+
+Chunk Details:
+  Chunk#  Offset      UncompSize    CompSize      Records   Dropped   CRC32     
+  ----------------------------------------------------------------------
+  0       128         2560          937           64        0         OK
+  1       1129        4080          1463          166       0         OK
+  ...
+  72      103717      4080          1439          7037      0         OK
+============================================================
+```
+
+---
+
+### Step 9: Dump Chronologically Merged Multi-Node Event Stream (`ubt-cat -m -d`)
+
+Merge trace containers across all nodes into a unified chronological stream:
+
+```bash
+./bin/ubt-cat -j 58893883 -m -d | head -n 15
+```
+
+**Real Output:**
+```text
+[309981.102394s] [Node 1] [Rank 2] [Event 1] [MPI Allreduce] Allreduce latency: 18674 us
+[309981.105961s] [Node 1] [Rank 2] [Event 1] [HPC Compute] Compute time: 2555 us
+[309981.129544s] [Node 1] [Rank 2] [Event 1] [MPI Barrier] Barrier wait time: 23535 us
+[309981.130645s] [Node 1] [Rank 2] [Event 1] [MPI Allreduce] Allreduce latency: 7 us
+[309981.133710s] [Node 1] [Rank 2] [Event 1] [HPC Compute] Compute time: 2415 us
+[309981.157580s] [Node 1] [Rank 2] [Event 1] [MPI Barrier] Barrier wait time: 23868 us
+[309981.158709s] [Node 1] [Rank 2] [Event 1] [MPI Allreduce] Allreduce latency: 6 us
+[309981.161750s] [Node 1] [Rank 2] [Event 1] [HPC Compute] Compute time: 2373 us
+[309981.185739s] [Node 1] [Rank 2] [Event 1] [MPI Barrier] Barrier wait time: 23987 us
+[309981.186842s] [Node 1] [Rank 2] [Event 1] [MPI Allreduce] Allreduce latency: 6 us
+[309981.190054s] [Node 1] [Rank 2] [Event 1] [HPC Compute] Compute time: 2478 us
+[309981.214221s] [Node 1] [Rank 2] [Event 1] [MPI Barrier] Barrier wait time: 24165 us
+[309981.215415s] [Node 1] [Rank 2] [Event 1] [MPI Allreduce] Allreduce latency: 7 us
+[309981.218598s] [Node 1] [Rank 2] [Event 1] [HPC Compute] Compute time: 2369 us
+[309981.242537s] [Node 1] [Rank 2] [Event 1] [MPI Barrier] Barrier wait time: 23937 us
+```
+
+---
+
+## 9. Summary & Next Steps
 
 | Workload Requirement | Recommended Approach | Tooling |
 | :--- | :--- | :--- |
 | **Simple Call & Arg Inspection** | Function tracing with `printf()` | `ubpftrace -c ...` |
 | **High-Frequency Statistics** | In-memory lock-free BPF maps (`count()`, `hist()`, `stats()`) | `ubpftrace` (summarized at exit) |
 | **Periodic / Bounded Metrics** | Time-window epoch keys (`elapsed / 1s`) | `ubpftrace` |
-| **Cluster-Wide Online Telemetry** | Periodic JSON snapshots (`--live-ms 300`) | `ubpftrace-top` |
-| **High-Volume Timeline Analysis** | LZ4 container offloading (`.ubpf`) | `ubpftrace-cat` + Perfetto |
+| **Cluster-Wide Online Telemetry** | Periodic JSON snapshots (`--live-ms 300`) | `ubt-top` |
+| **Zero-Restart Live Job Injection** | Dynamic ptrace injection & IPC refresh | `ubt-attach` + `ubt-top` |
+| **High-Volume Timeline Analysis** | LZ4 container offloading (`.ubpt`) & merged stream | `ubt-cat` + Perfetto |
 
 - Ready to profile multi-node MPI applications and GPU workloads? Check out the **[Production Presets Catalog](../presets/README.md)**.
 - For MPI/Slurm environment setup and Lustre parallel filesystem tuning, see the **[HPC & MPI Guide](hpc_and_mpi_guide.md)**.
+

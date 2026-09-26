@@ -113,21 +113,33 @@ resolve_function_addr_by_module_offset(const std::string_view &module_name,
 {
 	auto exec_path = get_executable_path();
 	void *module_base_addr = nullptr;
-	if (std::filesystem::equivalent(module_name, exec_path)) {
-		module_base_addr = get_module_base_addr("");
+	bool is_main_exec = false;
+	try {
+		if (module_name.empty() || 
+		    (std::filesystem::exists(module_name) && std::filesystem::exists(exec_path) && std::filesystem::equivalent(module_name, exec_path)) ||
+		    (!exec_path.empty() && std::filesystem::path(module_name).filename() == std::filesystem::path(exec_path).filename())) {
+			is_main_exec = true;
+		}
+	} catch (...) {
+		is_main_exec = module_name.empty();
+	}
+
+	if (is_main_exec) {
+		module_base_addr = get_module_base_addr(nullptr);
 	} else {
 		module_base_addr =
 			get_module_base_addr(std::string(module_name).c_str());
 	}
 	if (!module_base_addr) {
-		// It's not a bug, it might be attach to a unrelated process
-		// when using the LD_PRELOAD
 		SPDLOG_INFO("Failed to find module base address for {}",
 			    module_name);
 		return nullptr;
 	}
 
-	return ((char *)module_base_addr) + func_offset;
+	void *final_addr = ((char *)module_base_addr) + func_offset;
+	SPDLOG_INFO("[RESOLVE] module_name={}, is_main_exec={}, base={:x}, offset={:x} ({}), final_addr={:x}",
+		    module_name, is_main_exec, (uintptr_t)module_base_addr, func_offset, func_offset, (uintptr_t)final_addr);
+	return final_addr;
 }
 
 void *find_function_addr_by_name(const char *name)
@@ -142,8 +154,56 @@ void *find_function_addr_by_name(const char *name)
 
 void *get_module_base_addr(const char *module_name)
 {
-	gum_module_load(module_name, nullptr);
-	return (void *)gum_module_find_base_address(module_name);
+	std::ifstream maps("/proc/self/maps");
+	std::string line;
+	if (module_name == nullptr || module_name[0] == '\0') {
+		if (std::getline(maps, line)) {
+			unsigned long long start = 0, offset = 0;
+			if (sscanf(line.c_str(), "%llx-%*x %*4s %llx", &start, &offset) == 2) {
+				return (void *)(uintptr_t)(start - offset);
+			}
+		}
+		return nullptr;
+	}
+
+	std::string canon_str;
+	std::string fn_str;
+	std::string canon_fn_str;
+	try {
+		if (std::filesystem::exists(module_name)) {
+			canon_str = std::filesystem::canonical(module_name).string();
+			canon_fn_str = std::filesystem::path(canon_str).filename().string();
+		}
+		fn_str = std::filesystem::path(module_name).filename().string();
+	} catch (...) {}
+
+	// Parse /proc/self/maps directly first (100% safe, no crash)
+	while (std::getline(maps, line)) {
+		unsigned long long start = 0, offset = 0;
+		int path_pos = 0;
+		if (sscanf(line.c_str(), "%llx-%*x %*4s %llx %*x:%*x %*u %n", &start, &offset, &path_pos) >= 2 && path_pos > 0) {
+			std::string map_path = unescape_proc_path(line.substr(path_pos));
+			while (!map_path.empty() && (map_path.back() == '\n' || map_path.back() == '\r' || map_path.back() == ' '))
+				map_path.pop_back();
+			if (map_path == module_name || (!canon_str.empty() && map_path == canon_str) ||
+			    (!fn_str.empty() && map_path.find(fn_str) != std::string::npos) ||
+			    (!canon_fn_str.empty() && map_path.find(canon_fn_str) != std::string::npos)) {
+				return (void *)(uintptr_t)(start - offset);
+			}
+		}
+	}
+
+	void *addr = (void *)gum_module_find_base_address(module_name);
+	if (addr) return addr;
+	if (!canon_str.empty()) {
+		addr = (void *)gum_module_find_base_address(canon_str.c_str());
+		if (addr) return addr;
+	}
+	if (!fn_str.empty()) {
+		addr = (void *)gum_module_find_base_address(fn_str.c_str());
+		if (addr) return addr;
+	}
+	return nullptr;
 }
 void *find_module_export_by_name(const char *module_name,
 				 const char *symbol_name)

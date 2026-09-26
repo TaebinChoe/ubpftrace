@@ -1,10 +1,10 @@
 // ============================================================================
-// Getting Started - Scenario 4: Live Cluster Dashboard with ubpftrace-top
+// Getting Started - Scenario 4: Live Cluster Dashboard with ubt-top
 //
 // Description:
 //  Records in-memory metrics that are automatically exported out-of-band to
 //  shared JSON snapshots every interval (e.g. --live-ms 300 or -L 1).
-//  ubpftrace-top aggregates these snapshots across cluster nodes live in the terminal.
+//  ubt-top aggregates these snapshots across cluster nodes live in the terminal.
 //
 // How to Run (Step-by-Step Prompts):
 //  Terminal 1 (Launch Target Tracing with Live Snapshot Export):
@@ -12,8 +12,8 @@
 //      ./bin/ubpftrace --live-ms 300 -c "./examples/getting_started/target_app 30" \
 //      examples/getting_started/04_live_top_dashboard.bt
 //
-//  Terminal 2 (Monitor Live Aggregations with ubpftrace-top):
-//    $ ./bin/ubpftrace-top -d ./examples/getting_started/.live_demo
+//  Terminal 2 (Monitor Live Aggregations with ubt-top):
+//    $ ./bin/ubt-top -d ./examples/getting_started/.live_demo
 //
 // Expected Terminal 1 Output:
 //  Attached 1 probe
@@ -32,9 +32,9 @@
 //  @total_bytes: 1470
 //  @total_tasks: 30
 //
-// Expected Terminal 2 Output (ubpftrace-top TUI Dashboard):
+// Expected Terminal 2 Output (ubt-top TUI Dashboard):
 //  ================================================================================
-//   ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
+//   ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #1)
 //  ================================================================================
 //   Snapshot Dir : /pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/examples/getting_started/.live_demo
 //   Active Nodes : 1 | Stragglers: 0 | Interval: 1s

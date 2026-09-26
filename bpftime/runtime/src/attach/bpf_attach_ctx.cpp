@@ -73,6 +73,8 @@ int bpf_attach_ctx::init_attach_ctx_from_handlers(
 	std::lock_guard<std::mutex> lock(ctx_mutex);
 	for (int attempt = 0; attempt < 3; attempt++) {
 		auto seq = shm_holder.global_shared_memory.read_stable_epoch_seq();
+		SPDLOG_INFO("init_attach_ctx_from_handlers: attempt={}, seq={}, last_epoch_seen={}, manager={}",
+			    attempt, (unsigned long long)seq, (unsigned long long)last_epoch_seq_seen, (void *)manager);
 		if (seq == BPFTIME_EPOCH_SEQ_MISSING) {
 			SPDLOG_WARN(
 				"bpftime: shm epoch state missing; session tracking is disabled");
@@ -196,9 +198,7 @@ int bpf_attach_ctx::instantiate_handler_at(const handler_manager *manager,
 					   const runtime_config &config,
 					   bool handle_nv_attach_impl)
 {
-	SPDLOG_DEBUG("Instantiating handler at {}", id);
 	if (instantiated_handlers.contains(id)) {
-		SPDLOG_DEBUG("Handler {} already instantiated", id);
 		return 0;
 	}
 	if (stk.contains(id)) {
@@ -208,6 +208,7 @@ int bpf_attach_ctx::instantiate_handler_at(const handler_manager *manager,
 	}
 	stk.insert(id);
 	auto &handler = manager->get_handler(id);
+	SPDLOG_INFO("Instantiating handler at {}, type={}", id, handler.index());
 	if (std::holds_alternative<bpf_prog_handler>(handler)) {
 		if (int err = instantiate_prog_handler_at(
 			    id, std::get<bpf_prog_handler>(handler), config);
@@ -393,11 +394,12 @@ int bpf_attach_ctx::instantiate_bpf_link_handler_at(
 				return err;
 			},
 			*priv_data, attach_type);
+		SPDLOG_INFO(
+			"Instantiating bpf link {}: target_fd={}, prog_fd={}, attach_id={}",
+			id, handler.attach_target_id, handler.prog_id, attach_id);
 	}
 	if (attach_id < 0) {
-		// Since the agent might be attach to a unrelated
-		// process Using LD_PRELOAD, it's not an error here.
-		SPDLOG_DEBUG("Unable to instantiate bpf link handler {}: {}",
+		SPDLOG_INFO("Unable to instantiate bpf link handler {}: {}",
 			     id, attach_id);
 		return attach_id;
 	}
@@ -564,6 +566,7 @@ void bpf_attach_ctx::reset_instantiated_state_unlocked()
 	instantiated_perf_events.clear();
 	instantiated_handlers.clear();
 	current_id = CURRENT_ID_OFFSET;
+	last_epoch_seq_seen = (uint64_t)-1;
 }
 
 } // namespace bpftime

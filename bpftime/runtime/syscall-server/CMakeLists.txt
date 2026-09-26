@@ -8,6 +8,7 @@ add_library(bpftime-syscall-server SHARED
     syscall_context.cpp
     syscall_server_main.cpp
     syscall_server_utils.cpp
+    ../src/bpftime_shm_json.cpp
 )
 
 # Force link VM compat libraries so constructor-based factory registration is retained
@@ -23,6 +24,8 @@ if(${BPFTIME_LLVM_JIT})
   target_link_libraries(bpftime-syscall-server PUBLIC bpftime_llvm_vm)
   target_sources(bpftime-syscall-server PRIVATE $<TARGET_OBJECTS:bpftime_llvm_vm_obj>)
 endif()
+
+target_link_options(bpftime-syscall-server PUBLIC "-Wl,--whole-archive" "$<TARGET_FILE:runtime>" "-Wl,--no-whole-archive")
 
 target_link_libraries(bpftime-syscall-server PUBLIC
     runtime

@@ -21,14 +21,14 @@ public:
     bool start(ubpf_node_shm_header *shm,
                ubpf_container_writer *writer,
                uint64_t high_watermark_bytes = BUFFER_CAPACITY * 3 / 4,
-               uint64_t soft_timer_ns = 2000000000ULL);
+               uint64_t soft_timer_ns = 500000000ULL);
 
     bool start(ubpf_node_shm_header *shm,
                ubpf_container_writer *writer,
                ubpf_live_exporter *exporter,
                ubpf_micro_streamer *streamer,
                uint64_t high_watermark_bytes = BUFFER_CAPACITY * 3 / 4,
-               uint64_t soft_timer_ns = 2000000000ULL);
+               uint64_t soft_timer_ns = 500000000ULL);
 
     void stop();
     bool is_running() const { return running_.load(std::memory_order_relaxed); }

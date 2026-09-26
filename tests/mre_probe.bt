@@ -1,0 +1,4 @@
+uprobe:/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/tests/mre_target:target_work {
+    @calls = count();
+    @last_iter = max(arg0);
+}

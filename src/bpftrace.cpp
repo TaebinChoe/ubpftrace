@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <dlfcn.h>
 #ifdef HAVE_LIBSYSTEMD
 #include <systemd/sd-daemon.h>
 #endif
@@ -840,6 +841,29 @@ int BPFtrace::run(output::Output &out,
   // Used by runtime test framework to know when to run AFTER directive
   if (std::getenv("__BPFTRACE_NOTIFY_PROBES_ATTACHED"))
     std::cout << "__BPFTRACE_NOTIFY_PROBES_ATTACHED" << std::endl;
+
+  if (const char *manifest_path = std::getenv("UBPFTRACE_EXPORT_MANIFEST")) {
+    typedef int (*export_fn_t)(const char *);
+    export_fn_t export_fn = (export_fn_t)dlsym(RTLD_DEFAULT, "bpftime_export_global_shm_to_json");
+    if (!export_fn) {
+      export_fn = (export_fn_t)dlsym(RTLD_NEXT, "bpftime_export_global_shm_to_json");
+    }
+    if (export_fn) {
+      int exp_res = export_fn(manifest_path);
+      if (exp_res == 0) {
+        if (!bt_quiet) {
+          std::cout << "[ubpftrace] Successfully compiled & exported eBPF manifest to " << manifest_path << std::endl;
+        }
+        _exit(0);
+      } else {
+        LOG(ERROR) << "[ubpftrace] Failed to export eBPF manifest to " << manifest_path;
+        _exit(1);
+      }
+    } else {
+      LOG(ERROR) << "[ubpftrace] bpftime_export_global_shm_to_json symbol not found in address space";
+      _exit(1);
+    }
+  }
 
 #ifdef HAVE_LIBSYSTEMD
   err = sd_notify(false, "READY=1\nSTATUS=Processing events...");

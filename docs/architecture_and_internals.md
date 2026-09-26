@@ -25,7 +25,7 @@ This document provides a comprehensive, rigorous architectural breakdown of `ubp
    * Lustre 2MB Stripe-Aligned LZ4 Container Storage Format (1 file per compute node).
    * Isolated Private MPI Communicator Reduction Engine (`MPI_Comm_dup` binomial tree).
    * Real-Time Telemetry Plane: Sub-second Scenario A Snapshotting & Low-Latency Micro-Buffered Streaming.
-   * Standalone Post-Processing & Live Toolchain (`ubpftrace-cat` & `ubpftrace-top`).
+   * Standalone Post-Processing, Live & Dynamic Toolchains (`ubt-attach`, `ubt-cat` & `ubt-top`).
    * Production Preset Suite for Distributed AI (NCCL, CUDA) and HPC (MPI, OpenMP, Lustre).
 4. **Source Code Cross-Reference & Specification**: Mapping architectural components to concrete source files, struct layouts, and APIs.
 
@@ -54,11 +54,11 @@ To maintain strict academic and engineering rigor, the following matrix categori
 |    - Mock Syscall Server           | 9. Score-P Style Isolated MPI_Comm_dup Reduction Engine       |
 |      (libbpftime-syscall-server.so)| 10. Scenario A Sub-Second Atomic JSON Metric Exporter         |
 |    - Frida-Gum 5-byte inline JMP   | 11. Dual-Trigger Micro-Buffered Live stdout Event Streamer   |
-|      trampoline hooking            | 12. Standalone Real-Time ANSI TUI Dashboard (ubpftrace-top)   |
-|    - Userspace LLVM JIT VM         | 13. Multi-Stream K-Way Min-Heap Timeline Merger (ubpftrace-cat|
-|    - Boost Shared Memory Allocator | 14. System Library Auto-Discovery (paths.cpp for CUDA/NCCL)  |
-|                                    | 15. Flagship Production Presets for Distributed AI & HPC      |
-| 3. From Score-P:                   |                                                               |
+|      trampoline hooking            | 12. Standalone Real-Time ANSI TUI Dashboard (ubt-top)         |
+|    - Userspace LLVM JIT VM         | 13. Multi-Stream K-Way Min-Heap Timeline Merger (ubt-cat)     |
+|    - Boost Shared Memory Allocator | 14. Dynamic Multi-Node Runtime Injector & Hot-Patcher (ubt-attach)|
+|                                    | 15. System Library Auto-Discovery (paths.cpp for CUDA/NCCL)  |
+| 3. From Score-P:                   | 16. Flagship Production Presets for Distributed AI & HPC      |
 |    - Private MPI Communicator      |                                                               |
 |      Isolation (MPI_Comm_dup)      |                                                               |
 |    - Node-level File Aggregation   |                                                               |
@@ -81,7 +81,7 @@ To maintain strict academic and engineering rigor, the following matrix categori
 | **Intra-Node SHM Buffer** | **Novel** (`bpftime/runtime/src/hpc/ubpf_shm_buffer.cpp`) | **New Design** | Packed 64-bit atomic epoch-hazard double buffering; bounded retries ($R \le 2$); bounded probe latency (< 50 ns). |
 | **False-Sharing Elimination** | **Novel** (`bpftime/runtime/include/hpc/ubpf_shm_buffer.hpp`)| **New Design** | `PerRankStats` aligned to 64-byte L3 cache lines (`alignas(64)`), eliminating inter-core bus locking. |
 | **Asynchronous I/O Worker** | **Novel** (`bpftime/runtime/src/hpc/ubpf_async_io_worker.cpp`) | **New Design** | Autonomous background thread with Slurm CPU affinity breakout (`pthread_setaffinity_np` / `SCHED_IDLE`). |
-| **Stripe-Aligned Container** | **Novel** (`bpftime/runtime/src/hpc/ubpf_container_writer.cpp`) | **New Design** | 2MB/4MB Lustre-aligned container file (`.ubpf`) with streaming LZ4 block compression and CRC32 integrity. |
+| **Stripe-Aligned Container** | **Novel** (`bpftime/runtime/src/hpc/ubpf_container_writer.cpp`) | **New Design** | 2MB/4MB Lustre-aligned container file (`.ubt`) with streaming LZ4 block compression and CRC32 integrity. |
 | **Isolated MPI Reducer** | **Novel** (`bpftime/runtime/src/hpc/ubpf_mpi_reducer.cpp`) | **New Design** | PMPI lifecycle hooks (`MPI_Init`/`MPI_Finalize`), private `MPI_Comm_dup`, out-of-band binomial tree reduction to `_summary.json`. |
 | **Scenario A Live Exporter** | **Novel** (`bpftime/runtime/src/hpc/ubpf_live_exporter.cpp`) | **New Design** | Sub-second periodic metric snapshots (`node_<nid>.json`) with atomic `.tmp.<pid>` $\to$ `rename()` and decoupled map serialization. |
 | **Micro-Buffered Streamer** | **Novel** (`bpftime/runtime/src/hpc/ubpf_micro_streamer.cpp`) | **New Design** | Dual-trigger micro-buffering (20ms / 8KB) guaranteeing intra-node strictly monotonic stdout trace streaming. |
@@ -176,7 +176,7 @@ To resolve the structural conflicts between continuous high-frequency dynamic tr
 |          │                                                      Consolidated Job Summary Profile                   |
 |          ▼                                                      `ubpftrace_<jobid>_summary.json`                   |
 |  Per-Node Container File (1 per Compute Node)                                                                      |
-|  `ubpftrace_<jobid>_node_<nid>.ubpf`                                                                               |
+|  `ubpftrace_<jobid>_node_<nid>.ubt`                                                                                |
 |                                                                                                                   |
 +===================================================================================================================+
 |                                                                                                                   |
@@ -188,7 +188,7 @@ To resolve the structural conflicts between continuous high-frequency dynamic tr
 |     └── Atomic .tmp.<pid> -> rename() file emission                └── Sub-frame latency terminal stdout           |
 |         │                                                                                                         |
 |         ▼                                                                                                         |
-|     `ubpftrace-top` Real-Time Cluster Dashboard & JSON Engine                                                     |
+|     `ubt-top` Real-Time Cluster Dashboard & JSON Engine                                                           |
 |     ├── Multi-tier cluster aggregations (Global Max, Min, Sum, Histograms)                                        |
 |     ├── Node latency lag calculation & straggler detection                                                        |
 |     └── ANSI TUI Interactive Table & Streaming JSON for Grafana / PromQL Ingestion                                |
@@ -197,7 +197,7 @@ To resolve the structural conflicts between continuous high-frequency dynamic tr
                                            │                               │
                                            └───────────────┬───────────────┘
                                                            ▼
-                                      `ubpftrace-cat` Standalone Toolchain CLI
+                                       `ubt-cat` Standalone Toolchain CLI
                                       ├── --info   : Compression ratio, chunk & CRC32 metadata
                                       ├── --dump   : Formatted text event stream decode
                                       ├── --merge  : Multi-stream K-way min-heap chronological merge
@@ -383,7 +383,7 @@ The background I/O worker (`ubpf_async_io_worker`) is spawned exclusively by `lo
                     │
                     ▼
   [Step 3: Lustre 2MB Stripe-Aligned Chunk Append]
-  └── Direct I/O write to `ubpftrace_<jobid>_node_<nid>.ubpf` (1 file per node)
+  └── Direct I/O write to `ubpftrace_<jobid>_node_<nid>.ubt` (1 file per node)
 ```
 
 #### Slurm CPU Affinity Breakout
@@ -397,13 +397,13 @@ The worker performs an **Affinity Breakout**:
 
 ---
 
-### 4.5 Lustre 2MB Stripe-Aligned Container Storage Format (`.ubpf`)
+### 4.5 Lustre 2MB Stripe-Aligned Container Storage Format (`.ubt`)
 
 To eliminate Lustre Metadata Server (MDS) file lock contention, `ubpftrace` enforces a **Strict 1-File-Per-Node Policy**.
 
 ```
 +===================================================================================================+
-|                              UBPF PER-NODE CONTAINER BINARY FORMAT (.ubpf)                        |
+|                              UBPF PER-NODE CONTAINER BINARY FORMAT (.ubt)                         |
 +===================================================================================================+
 | FILE HEADER (64 Bytes, Aligned)                                                                   |
 | - Magic: 0x55425046 ("UBPF")                                                                      |
@@ -518,16 +518,16 @@ For in-memory statistical maps (`hist()`, `stats()`, `@count`), `ubpftrace` avoi
 
 ---
 
-### 4.8 Standalone Toolchain: `ubpftrace-cat` & `ubpftrace-top`
+### 4.8 Standalone Toolchain: `ubt-cat` & `ubt-top`
 
-#### 1. Cluster Aggregation Dashboard (`ubpftrace-top`)
-`ubpftrace-top` (`tools/ubpftrace_top.cpp`) continuously scrapes Scenario A snapshots across compute nodes:
+#### 1. Cluster Aggregation Dashboard (`ubt-top`)
+`ubt-top` (`tools/ubpftrace_top.cpp`) continuously scrapes Scenario A snapshots across compute nodes:
 * **Multi-Tier Aggregations**: Computes cluster-wide `Global Max`, `Global Min`, `Global Sum`, and `Global Average` across active BPF maps.
 * **Straggler & Health Detection**: Monitors node epoch progression and marks nodes as `[STRAGGLER]` if $\text{Latency Lag} > 3 \times \text{Interval}$.
 * **Dual Rendering Engines**: Interactive ANSI TUI table mode and machine-readable streaming JSON mode for Grafana / Prometheus pipeline ingest.
 
-#### 2. Offline Container Merger & Decoder (`ubpftrace-cat`)
-`ubpftrace-cat` (`tools/ubpftrace_cat.cpp`) provides offline analysis for `.ubpf` containers:
+#### 2. Offline Container Merger & Decoder (`ubt-cat`)
+`ubt-cat` (`tools/ubpftrace_cat.cpp`) provides offline analysis for `.ubt` containers:
 * `--info`: Validates chunk headers, CRC32 integrity, and computes LZ4 compression ratio.
 * `--dump`: Formats binary records into human-readable text logs.
 * `--merge`: K-way min-heap priority queue multi-node chronological merge:
@@ -576,10 +576,10 @@ For in-memory statistical maps (`hist()`, `stats()`, `@count`), `ubpftrace` avoi
 | **False-Sharing Immunity** | N/A (Kernel managed) | ❌ Vulnerable | **✅ Guaranteed (`alignas(64)`)** |
 | **HPC Topology Awareness** | ❌ None | ❌ None | **✅ Slurm/PMIx/MPI Builtins** |
 | **Parallel File System (Lustre)**| ❌ Blind | ❌ Blind | **✅ Virtual Storage Mapping (`lustre_ost`)**|
-| **Multi-Node Trace Output**| Uncoordinated stdout | Single-node `/dev/shm` | **1 Container per Node (`.ubpf`)** |
+| **Multi-Node Trace Output**| Uncoordinated stdout | Single-node `/dev/shm` | **1 Container per Node (`.ubt`)** |
 | **PFS MDS Protection** | ❌ MDS Saturation ($N$ files)| ❌ Memory Exhaustion | **✅ 100% MDS Protected** |
 | **Real-Time Telemetry** | ❌ Kernel RingBuf only | ❌ None | **✅ Scenario A Snapshots + Live Stream** |
-| **Cluster Trace Merging** | ❌ None | ❌ None | **✅ $K$-Way Min-Heap (`ubpftrace-cat`)**|
+| **Cluster Trace Merging** | ❌ None | ❌ None | **✅ $K$-Way Min-Heap (`ubt-cat`)**|
 | **Communicator Isolation** | ❌ None | ❌ None | **✅ Private `MPI_Comm_dup`** |
 
 ---
@@ -637,13 +637,17 @@ For in-memory statistical maps (`hist()`, `stats()`, `@count`), `ubpftrace` avoi
 |                                       |                                                     | BPF_FUNC_get_nodename (504)     |
 |                                       |                                                     | BPF_FUNC_get_lustre_ost (505)   |
 +---------------------------------------+-----------------------------------------------------+---------------------------------+
-| Real-Time Cluster Dashboard CLI       | tools/ubpftrace_top.cpp                             | ubpftrace-top CLI               |
+| Real-Time Cluster Dashboard CLI       | tools/ubpftrace_top.cpp                             | ubt-top CLI                     |
 |                                       |                                                     | ANSI TUI & JSON streaming       |
 |                                       |                                                     | Straggler node detector         |
 +---------------------------------------+-----------------------------------------------------+---------------------------------+
-| Multi-Stream Merger & CLI Decoder     | tools/ubpftrace_cat.cpp                             | ubpftrace-cat CLI               |
+| Multi-Stream Merger & CLI Decoder     | tools/ubpftrace_cat.cpp                             | ubt-cat CLI                     |
 |                                       |                                                     | Min-heap K-way stream merger    |
 |                                       |                                                     | Chrome tracing exporter         |
++---------------------------------------+-----------------------------------------------------+---------------------------------+
+| Dynamic Runtime Injector CLI          | tools/ubpftrace_attach.cpp                          | ubt-attach CLI                  |
+|                                       |                                                     | Dynamic ptrace / Frida inject   |
+|                                       |                                                     | IPC socket refresh & hot-patch  |
 +---------------------------------------+-----------------------------------------------------+---------------------------------+
 | System Library Auto-Discovery         | src/util/paths.cpp                                  | get_library_candidate_names     |
 |                                       |                                                     | sys_lib_dirs (CUDA/NCCL/MPI)    |

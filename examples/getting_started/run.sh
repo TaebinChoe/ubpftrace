@@ -9,8 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 UBPFTRACE="${ROOT_DIR}/bin/ubpftrace"
-UBPFTRACE_TOP="${ROOT_DIR}/bin/ubpftrace-top"
-UBPFTRACE_CAT="${ROOT_DIR}/bin/ubpftrace-cat"
+UBT_TOP="${ROOT_DIR}/bin/ubt-top"
+UBT_CAT="${ROOT_DIR}/bin/ubt-cat"
 APP="${SCRIPT_DIR}/target_app"
 
 echo "=============================================================================="
@@ -41,7 +41,7 @@ echo "==========================================================================
 
 echo ""
 echo "=============================================================================="
-echo " [SCENARIO 4] Live Dashboard with ubpftrace-top (04_live_top_dashboard.bt)"
+echo " [SCENARIO 4] Live Dashboard with ubt-top (04_live_top_dashboard.bt)"
 echo "=============================================================================="
 LIVE_DIR="${SCRIPT_DIR}/.live_demo"
 rm -rf "${LIVE_DIR}"
@@ -50,23 +50,23 @@ UBPFTRACE_LIVE_DIR="${LIVE_DIR}" "${UBPFTRACE}" --live-ms 300 -c "${APP} 20" "${
 BG_PID=$!
 
 sleep 1.0
-echo "--- Real-time Cluster Query via ubpftrace-top ---"
-"${UBPFTRACE_TOP}" -d "${LIVE_DIR}" --once || true
+echo "--- Real-time Cluster Query via ubt-top ---"
+"${UBT_TOP}" -d "${LIVE_DIR}" --once || true
 
 wait "${BG_PID}"
 
 echo ""
 echo "=============================================================================="
-echo " [SCENARIO 5] Trace Container Recording & Decoding with ubpftrace-cat"
+echo " [SCENARIO 5] Trace Container Recording & Decoding with ubt-cat"
 echo "=============================================================================="
-rm -f "${SCRIPT_DIR}"/*.ubpf
+rm -f "${SCRIPT_DIR}"/*.ubt "${SCRIPT_DIR}"/*.ubpf
 UBPFTRACE_OUTPUT_DIR="${SCRIPT_DIR}" "${UBPFTRACE}" -c "${APP} 10" "${SCRIPT_DIR}/05_trace_container_cat.bt"
 
-echo "--- Container Info (ubpftrace-cat --info) ---"
-"${UBPFTRACE_CAT}" --info "${SCRIPT_DIR}"/*.ubpf
+echo "--- Container Info (ubt-cat --info) ---"
+"${UBT_CAT}" --info "${SCRIPT_DIR}"/*.ubt
 
-echo "--- Decoded Events (ubpftrace-cat --dump) ---"
-"${UBPFTRACE_CAT}" --dump "${SCRIPT_DIR}"/*.ubpf
+echo "--- Decoded Events (ubt-cat --dump) ---"
+"${UBT_CAT}" --dump "${SCRIPT_DIR}"/*.ubt
 
 echo ""
 echo "=============================================================================="

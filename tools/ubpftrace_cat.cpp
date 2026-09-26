@@ -168,12 +168,44 @@ bool parse_ubpf_file(const std::string &filepath, DecodedFile &df) {
 
                 if (rec_hdr->payload_len > 0) {
                     const char *payload_ptr = reinterpret_cast<const char *>(uncomp_buf.data() + offset + sizeof(ubpf_event_record_header));
-                    if (rec_hdr->event_type == 1) {
+                    bool is_printable = true;
+                    for (size_t i = 0; i < rec_hdr->payload_len; ++i) {
+                        unsigned char c = static_cast<unsigned char>(payload_ptr[i]);
+                        if (c == 0 && i == rec_hdr->payload_len - 1) break;
+                        if (!std::isprint(c) && c != '\n' && c != '\t' && c != '\r') {
+                            is_printable = false;
+                            break;
+                        }
+                    }
+
+                    if (is_printable) {
                         size_t str_len = rec_hdr->payload_len;
-                        if (str_len > 0 && payload_ptr[str_len - 1] == '\0') {
+                        while (str_len > 0 && (payload_ptr[str_len - 1] == '\0' || payload_ptr[str_len - 1] == '\n' || payload_ptr[str_len - 1] == '\r')) {
                             str_len--;
                         }
                         ev.payload = std::string(payload_ptr, str_len);
+                    } else if (rec_hdr->payload_len >= sizeof(uint64_t)) {
+                        uint64_t action_id = *reinterpret_cast<const uint64_t *>(payload_ptr);
+                        if (rec_hdr->payload_len == sizeof(uint64_t) * 2) {
+                            uint64_t v0 = *reinterpret_cast<const uint64_t *>(payload_ptr + 8);
+                            if (action_id == 0) {
+                                ev.payload = "[HPC Compute] Compute time: " + std::to_string(v0) + " us";
+                            } else if (action_id == 1) {
+                                ev.payload = "[MPI Barrier] Barrier wait time: " + std::to_string(v0) + " us";
+                            } else if (action_id == 2) {
+                                ev.payload = "[MPI Allreduce] Allreduce latency: " + std::to_string(v0) + " us";
+                            } else {
+                                ev.payload = "[Event Action " + std::to_string(action_id) + "] Value: " + std::to_string(v0);
+                            }
+                        } else if (rec_hdr->payload_len == sizeof(uint64_t) * 3) {
+                            uint64_t v0 = *reinterpret_cast<const uint64_t *>(payload_ptr + 8);
+                            uint64_t v1 = *reinterpret_cast<const uint64_t *>(payload_ptr + 16);
+                            ev.payload = "[Event Action " + std::to_string(action_id) + "] Args: (" + std::to_string(v0) + ", " + std::to_string(v1) + ")";
+                        } else {
+                            std::ostringstream ss;
+                            ss << "[Event Action " << action_id << " (" << rec_hdr->payload_len << " bytes)]";
+                            ev.payload = ss.str();
+                        }
                     } else {
                         char bin_buf[128];
                         snprintf(bin_buf, sizeof(bin_buf), "[Binary Payload: %u bytes]", rec_hdr->payload_len);
@@ -326,8 +358,9 @@ void export_chrome_tracing(const std::vector<DecodedFile> &files, const std::str
 }
 
 void print_help(const char *prog_name) {
-    std::cout << "Usage: " << prog_name << " [OPTIONS] <file1.ubpf / dir> [file2.ubpf ...]\n"
+    std::cout << "Usage: " << prog_name << " [OPTIONS] [file1.ubpt / dir ...]\n"
               << "\nOptions:\n"
+              << "  -j, --job-id, --job <ID> Slurm Job ID to inspect trace containers for\n"
               << "  -i, --info, --summary    Display container file metadata and chunk stats\n"
               << "  -d, --dump               Print trace records in chronological order (default)\n"
               << "  -m, --merge              Merge multiple node container streams chronologically\n"
@@ -339,15 +372,11 @@ void print_help(const char *prog_name) {
 } // anonymous namespace
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        print_help(argv[0]);
-        return 1;
-    }
-
     bool opt_info = false;
     bool opt_merge = false;
     std::string chrome_out;
     std::string output_file;
+    std::string target_job_id;
     std::vector<std::string> raw_inputs;
 
     for (int i = 1; i < argc; ++i) {
@@ -361,6 +390,8 @@ int main(int argc, char **argv) {
             // default
         } else if (arg == "-m" || arg == "--merge") {
             opt_merge = true;
+        } else if ((arg == "-j" || arg == "--job-id" || arg == "--job") && i + 1 < argc) {
+            target_job_id = argv[++i];
         } else if (arg == "-o" || arg == "--output") {
             if (i + 1 < argc) {
                 output_file = argv[++i];
@@ -382,12 +413,38 @@ int main(int argc, char **argv) {
         }
     }
 
+    // Default search paths if no positional files/directories provided
+    if (raw_inputs.empty()) {
+        std::vector<std::string> default_dirs = {
+            "traces",
+            ".",
+            "/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces",
+            "/pscratch/sd/s/sgkim/tchoe_home/traces"
+        };
+        if (const char *env_dir = std::getenv("UBPFTRACE_OUTPUT_DIR")) {
+            default_dirs.insert(default_dirs.begin(), env_dir);
+        }
+        for (const auto &d : default_dirs) {
+            if (std::filesystem::exists(d) && std::filesystem::is_directory(d)) {
+                raw_inputs.push_back(d);
+                break;
+            }
+        }
+    }
+
     std::vector<std::string> input_files;
     for (const auto &p : raw_inputs) {
         std::error_code ec;
         if (std::filesystem::is_directory(p, ec)) {
             for (const auto &entry : std::filesystem::directory_iterator(p, ec)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".ubpf") {
+                if (entry.is_regular_file() && 
+                    (entry.path().extension() == ".ubpt" || entry.path().extension() == ".ubt" || entry.path().extension() == ".ubpf")) {
+                    if (!target_job_id.empty()) {
+                        std::string fn = entry.path().filename().string();
+                        if (fn.find(target_job_id) == std::string::npos) {
+                            continue;
+                        }
+                    }
                     input_files.push_back(entry.path().string());
                 }
             }
@@ -400,7 +457,7 @@ int main(int argc, char **argv) {
     std::sort(input_files.begin(), input_files.end());
 
     if (input_files.empty()) {
-        std::cerr << "Error: No input .ubpf files found.\n";
+        std::cerr << "Error: No matching .ubpt trace container files found.\n";
         print_help(argv[0]);
         return 1;
     }
@@ -414,7 +471,7 @@ int main(int argc, char **argv) {
     }
 
     if (decoded_files.empty()) {
-        std::cerr << "Error: No valid .ubpf files could be decoded.\n";
+        std::cerr << "Error: No valid .ubpt trace container files could be decoded.\n";
         return 1;
     }
 

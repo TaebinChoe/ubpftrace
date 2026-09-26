@@ -15,7 +15,7 @@ namespace hpc {
 namespace {
 
 uint64_t get_now_ns() {
-    auto now = std::chrono::steady_clock::now();
+    auto now = std::chrono::system_clock::now();
     return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
 }
 
@@ -84,6 +84,11 @@ bool ubpf_live_exporter::export_snapshot() {
         }
     }
     j["maps"] = maps_json;
+
+    // Ensure output directory exists
+    try {
+        std::filesystem::create_directories(output_dir_);
+    } catch (...) {}
 
     // 1. Write to temporary hidden file
     FILE *fp = fopen(temp_filepath_.c_str(), "w");

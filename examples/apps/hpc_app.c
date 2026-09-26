@@ -9,15 +9,16 @@
 #define MSG_ELEMENTS 16384 // 64 KB per halo slice
 
 // Simulated Computational Domain
-// Rank 0 is assigned a fine-mesh refinement tile (16x compute workload -> 25ms delay)
-// Ranks 1..N-1 have standard coarse grid tiles (1.5ms delay)
+// Rank 0 is assigned a fine-mesh refinement tile (16x compute workload -> ~25ms delay)
+// Ranks 1..N-1 have standard coarse grid tiles (~1.5ms delay)
+__attribute__((noinline, noclone))
 void simulate_grid_computation(int rank, int iter) {
     if (rank == 0) {
-        // Computational straggler
-        usleep(25000); // 25ms
+        // Computational straggler: 25ms
+        usleep(25000);
     } else {
-        // Fast worker ranks
-        usleep(1500);  // 1.5ms
+        // Fast worker ranks: 1.5ms
+        usleep(1500);
     }
 }
 
@@ -45,10 +46,19 @@ int main(int argc, char **argv) {
 
     double local_energy = 100.0 * (rank + 1);
     double global_energy = 0.0;
+    int num_iterations = (argc > 1) ? atoi(argv[1]) : 10000;
+    if (num_iterations == 0) {
+        num_iterations = -1; // Continuous mode
+    }
 
-    for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
-        if (rank == 0) {
-            printf("\n--- Simulation Iteration %d/%d ---\n", iter + 1, NUM_ITERATIONS);
+    for (int iter = 0; num_iterations < 0 || iter < num_iterations; iter++) {
+        if (rank == 0 && ((iter + 1) % 10 == 0 || (iter + 1) == num_iterations || iter < 4)) {
+            if (num_iterations > 0) {
+                printf("\n--- Simulation Iteration %d/%d ---\n", iter + 1, num_iterations);
+            } else {
+                printf("\n--- Simulation Iteration %d (Continuous Mode) ---\n", iter + 1);
+            }
+            fflush(stdout);
         }
 
         // 1. Non-blocking Boundary Halo Exchange

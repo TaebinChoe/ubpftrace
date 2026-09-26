@@ -1,4 +1,4 @@
 {
-    global: epoll_wait; epoll_ctl; epoll_create1; ioctl; mmap64; mmap; close; syscall; munmap; open; openat; read; fopen; fopen64; _IO_new_fopen; bpftime_syscall_server__poll_gpu_ringbuf_map;
+    global: epoll_wait; epoll_ctl; epoll_create1; ioctl; mmap64; mmap; close; syscall; munmap; open; openat; read; fopen; fopen64; _IO_new_fopen; bpftime_syscall_server__poll_gpu_ringbuf_map; bpftime_export_global_shm_to_json; bpftime_import_global_shm_from_json; bpftime_initialize_global_shm; bpftime_destroy_global_shm;
     local: *;
 };

@@ -22,7 +22,12 @@ This directory contains curated, production-ready `.bt` preset scripts for diagn
 
 ## 🚀 Quick Usage Guide
 
-All presets run in **pure userspace (Ring 3)** with **zero root privileges**.
+All presets run in **pure userspace (Ring 3)** with **zero root privileges**. They can be launched at startup (`ubpftrace -c ...`) or injected dynamically into already running multi-node jobs with **`ubt-attach`**:
+
+```bash
+# Dynamic runtime injection across all nodes in a Slurm job:
+./bin/ubt-attach --job <JOBID> --comm <APP_NAME> -s presets/<PRESET>.bt
+```
 
 ### 1. AI Model Checkpoint & Lustre OST Bottleneck Profiling
 Tracks per-OST latency distributions during checkpoint saves (Safetensors / PyTorch Distributed Snapshot):

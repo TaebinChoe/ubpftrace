@@ -45,14 +45,14 @@ flowchart TB
         subgraph StreamPath ["Path B: Event Stream Pipeline (Discrete Logging)"]
             AppContext -->|Lock-Free Append ~2.4ns| SHMDouble["Dual-Epoch SHM Ring Buffer (alignas 64)"]
             SHMDouble -->|Hazard Drain & LZ4| AsyncWorker["Async I/O Worker (nice +19)"]
-            AsyncWorker -->|2MB Stripe Direct I/O| UBPFContainer[".ubpf Binary Container (1 File/Node)"]
+            AsyncWorker -->|2MB Stripe Direct I/O| UBPFContainer[".ubt Binary Container (1 File/Node)"]
             AsyncWorker -->|Micro-Stream (20ms/8KB)| Stdout["Micro-Buffered stdout Stream"]
         end
     end
 
     subgraph ToolchainPlane ["4. Post-Mortem & Live Toolchain Plane"]
-        LiveExp --> TopTUI["ubpftrace-top (Live Cluster Dashboard & Straggler Detector)"]
-        UBPFContainer --> CatTool["ubpftrace-cat (K-Way Min-Heap Merge & Perfetto Visualizer)"]
+        LiveExp --> TopTUI["ubt-top (Live Cluster Dashboard & Straggler Detector)"]
+        UBPFContainer --> CatTool["ubt-cat (K-Way Min-Heap Merge & Perfetto Visualizer)"]
     end
 ```
 
@@ -88,7 +88,7 @@ To address these challenges, `ubpftrace` is built around three strict architectu
 | :--- | :--- | :--- |
 | **1. Zero-Jitter Invariant** | Probe execution overhead must be $< 0.1\%$ of application runtime, with zero synchronous I/O or kernel context switches. | Fast in-memory JIT trampolines ($\approx 2.4\text{ ns}$), lock-free dual-epoch buffers, background workers running at `SCHED_IDLE` / `nice +19` on isolated cores. |
 | **2. Unprivileged Security Invariant** | Must execute entirely in userspace with zero root / `sudo` / `CAP_BPF` permissions. | Userspace eBPF virtual machine, userspace static verifier, dynamic library interception (`LD_PRELOAD`), and userspace text-segment modification via `mprotect(PROT_WRITE)`. |
-| **3. Lustre-Friendly Storage Invariant** | Must never cause metadata server contention on parallel filesystems. | Strictly **1 container file per physical node** (`trace_node_<id>.ubpf`), 2MB stripe-aligned direct-I/O (`O_DIRECT`), and single-file global summary reduction (`_summary.json`). |
+| **3. Lustre-Friendly Storage Invariant** | Must never cause metadata server contention on parallel filesystems. | Strictly **1 container file per physical node** (`trace_node_<id>.ubt`), 2MB stripe-aligned direct-I/O (`O_DIRECT`), and single-file global summary reduction (`_summary.json`). |
 
 ---
 
@@ -112,7 +112,7 @@ The core architectural innovation of `ubpftrace` is the **fundamental separation
    │ • Memory: Strictly Bounded    │                                 │ • Memory: Unbounded (grows/t) │
    │ • Lifetime: Entire Run        │                                 │ • Lifetime: Transient / Drained│
    │ • Storage: 100% in Host RAM   │                                 │ • Storage: 2MB LZ4 Chunked    │
-   │ • Collision: OOM-Immune       │                                 │   Container (.ubpf) on Lustre │
+   │ • Collision: OOM-Immune       │                                 │   Container (.ubt) on Lustre  │
    │ • Online: Live JSON Snapshot  │                                 │ • Online: Lock-free SHM double│
    │ • Offline: Score-P Tree Red.  │                                 │   buffer + micro-stream stdout│
    └───────────────────────────────┘                                 └───────────────────────────────┘
@@ -150,7 +150,7 @@ When live metric inspection is requested (`-L <SEC>` or `--live-ms <MS>`):
    $$\text{Path}_{\text{tmp}} = \texttt{node\_<node\_id>.json.tmp.<pid>}$$
 4. It calls atomic POSIX replacement:
    $$\texttt{rename}(\text{Path}_{\text{tmp}}, \texttt{node\_<node\_id>.json})$$
-   This guarantees that external monitoring daemons (`ubpftrace-top`) never encounter partial or corrupted JSON files.
+   This guarantees that external monitoring daemons (`ubt-top`) never encounter partial or corrupted JSON files.
 5. **Lustre Safety**: Exactly **1 snapshot file per physical node** is written.
 
 #### E. Offline Export: Scenario B Score-P Style Isolated MPI Reduction
@@ -277,8 +277,8 @@ struct alignas(64) ubpf_per_rank_stats {
 ```
 Every rank writes exclusively to its dedicated cacheline, achieving $O(1)$ concurrent scalability with **zero cacheline invalidation bouncing**.
 
-#### D. Lustre OST Stripe Alignment & Direct I/O Container Writer (`.ubpf`)
-The asynchronous worker writes compressed chunks into the node container file (`trace_job<id>_node<id>.ubpf`):
+#### D. Lustre OST Stripe Alignment & Direct I/O Container Writer (`.ubt`)
+The asynchronous worker writes compressed chunks into the node container file (`trace_job<id>_node<id>.ubt`):
 1. **Lustre Geometry Discovery**: Queries the OST stripe width $S$ via `ioctl(fd, LL_IOC_LOV_GETSTRIPE)` (typically 2MB).
 2. **Page-Aligned Memory Allocation**: Direct-I/O memory buffers are allocated using `posix_memalign(4096, 2 * 1024 * 1024)`.
 3. **`O_DIRECT` Bypass**: Chunks are appended directly to storage using `O_DIRECT`, bypassing the Linux page cache and eliminating writeback cache lockups.
@@ -364,7 +364,7 @@ Relocation Trampoline Buffer:
 1. When `main()` returns or the process receives termination signals:
 2. **In Scenario B**: `MPI_Finalize` executes the Score-P tree reduction and Rank 0 writes `_summary.json`.
 3. **In Scenario A**: The live exporter executes a final forced snapshot export.
-4. The asynchronous I/O worker flushes all remaining double-buffer blocks and appends the index footer to `.ubpf`.
+4. The asynchronous I/O worker flushes all remaining double-buffer blocks and appends the index footer to `.ubt`.
 5. Trampolines are unlinked, shared memory blocks are unmapped, and the process exits with its native exit code.
 
 ---
@@ -375,10 +375,10 @@ To allow any systems programmer to reimplement `ubpftrace` from scratch, we spec
 
 ---
 
-### 4.1 Binary Container Header Specifications (`.ubpf`)
+### 4.1 Binary Container Header Specifications (`.ubt`)
 
 ```cpp
-// 128-Byte Static File Header (Offset 0 of .ubpf container)
+// 128-Byte Static File Header (Offset 0 of .ubt container)
 struct alignas(64) ubpf_file_header {
     uint32_t magic;               // 0x55425046 ("UBPF")
     uint32_t version;             // 0x00010000 (v1.0)
@@ -455,9 +455,9 @@ struct ubpf_node_shm_header {
 | **Mathematical Abstraction** | Stateful Accumulator: $M: \mathcal{K} \to \mathcal{V}$ | Discrete Chronological Log: $\mathcal{E} = \{(t_i, e_i)\}$ |
 | **Data Growth Behavior** | **Strictly Bounded** ($O(\text{unique keys}) \le \text{max\_entries}$) | **Unbounded** ($O(\text{event\_rate} \times \text{time})$) |
 | **In-Memory Storage** | Shared Memory Hash / Array Tables ($\approx 640\text{ KB}$) | Lock-Free Dual-Epoch SHM Buffer Blocks ($2 \times 16\text{ MB}$) |
-| **Online Disk I/O** | **Zero** (Except 1 JSON file/node in Scenario A) | Periodic 2MB LZ4 Compressed Stripe Append (`.ubpf`) |
+| **Online Disk I/O** | **Zero** (Except 1 JSON file/node in Scenario A) | Periodic 2MB LZ4 Compressed Stripe Append (`.ubt`) |
 | **OOM Protection Policy** | Static capacity cap ($\text{max\_entries}$); rejects new keys | Double-buffer recycling & background disk draining |
 | **Execution Overhead** | $\approx 2.4\text{ ns}$ (pure atomic memory write) | $\approx 2.4\text{ ns}$ (lock-free SHM memcpy) |
-| **Online Telemetry Interface** | **`ubpftrace-top`** (Reads `node_<id>.json` live) | **`--stream`** (Micro-buffered stdout batching) |
-| **Offline Final Output** | **`_summary.json`** (Score-P MPI Tree Reduction) | **`.ubpf` container** $\to$ **`ubpftrace-cat`** $\to$ Perfetto |
+| **Online Telemetry Interface** | **`ubt-top`** (Reads `node_<id>.json` live) | **`--stream`** (Micro-buffered stdout batching) |
+| **Offline Final Output** | **`_summary.json`** (Score-P MPI Tree Reduction) | **`.ubt` container** $\to$ **`ubt-cat`** $\to$ Perfetto |
 | **HPC Scalability** | Scalable to $> 100{,}000$ MPI ranks via MPI tree | Strictly **1 container file per physical node** (Lustre-safe) |

@@ -558,6 +558,17 @@ int bpftime_shm::epoll_create()
 	return fd;
 }
 
+int bpftime_shm::add_epoll(int fd)
+{
+	if (!manager) {
+		return -1;
+	}
+	if (fd < 0) {
+		fd = open_fake_fd();
+	}
+	return manager->set_handler(fd, bpftime::epoll_handler(segment), segment);
+}
+
 const handler_variant &bpftime_shm::get_handler(int fd) const
 {
 	return manager->get_handler(fd);
@@ -786,6 +797,7 @@ bpftime_shm::bpftime_shm(const char *shm_name, shm_open_type type)
 {
 	// Get the config from env because the shared memory is not initialized
 	auto config = construct_runtime_config_from_env();
+	local_runtime_config = config;
 	size_t memory_size = config.shm_memory_size;
 	size_t max_fd_count = config.max_fd_count;
 	if (type == shm_open_type::SHM_OPEN_ONLY) {

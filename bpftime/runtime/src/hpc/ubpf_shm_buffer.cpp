@@ -44,7 +44,8 @@ ubpf_node_shm_header *ubpf_shm_create_or_attach(uint32_t job_id, uint32_t node_i
         }
     }
 
-    if (is_creator) {
+    struct stat st;
+    if (fstat(fd, &st) == 0 && st.st_size < static_cast<off_t>(total_size)) {
         if (ftruncate(fd, static_cast<off_t>(total_size)) != 0) {
             close(fd);
             return nullptr;
@@ -84,10 +85,6 @@ void ubpf_shm_detach(ubpf_node_shm_header *shm, bool is_creator,
     size_t total_size = sizeof(ubpf_node_shm_header);
 
     munmap(static_cast<void *>(shm), total_size);
-
-    if (is_creator) {
-        shm_unlink(shm_name.c_str());
-    }
 }
 
 } // namespace hpc

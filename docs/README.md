@@ -12,7 +12,7 @@ flowchart TD
     GS --> UG["2. Scripting & User Guide<br><i>Probes, ABI arguments, BPF maps, aggregations</i>"]
     
     UG --> HPC["3. HPC & Multi-Node MPI Guide<br><i>Slurm integration, Lustre striping, Score-P reduction</i>"]
-    UG --> Tools["4. Companion Toolchains Manual<br><i>ubpftrace-cat & ubpftrace-top guide</i>"]
+    UG --> Tools["4. Companion Toolchains Manual<br><i>ubt-cat & ubt-top guide</i>"]
     UG --> Presets["5. Flagship Presets Catalog<br><i>Ready-to-use scripts for AI, MPI, Lustre, GPU</i>"]
     
     HPC --> CLI["6. CLI & Environment Reference<br><i>Authoritative flag matrix & options</i>"]
@@ -29,8 +29,8 @@ A hands-on, step-by-step introduction:
 - Tracing your first application with `uprobes`
 - Working with statistical BPF maps (`count()`, `sum()`, `avg()`, `hist()`)
 - Real-time terminal streaming (`--stream`)
-- Launching the interactive cluster dashboard (`ubpftrace-top`)
-- Decoding trace containers (`ubpftrace-cat`)
+- Launching the interactive cluster dashboard (`ubt-top`)
+- Decoding trace containers (`ubt-cat`)
 
 ---
 
@@ -55,15 +55,21 @@ Production deployment across large-scale supercomputing clusters:
 ---
 
 ### 🛠️ [4. Companion Toolchains Manual](toolchains.md)
-Comprehensive reference for post-mortem decoding and real-time operations:
-- **`ubpftrace-cat`**:
+Comprehensive reference for post-mortem decoding, live operations, and dynamic injection:
+- **`ubt-attach`**:
+  - Unmodified process runtime injection (`--pid`, `--comm`)
+  - Cluster-wide fan-out across Slurm jobs (`--job`)
+  - Zero-overhead dynamic detachment (`--detach`)
+  - Fast Unix IPC probe refresh & hot-patching
+- **`ubt-cat`**:
   - Container inspection (`--info`)
   - Chronological event dumping (`--dump`)
   - Multi-node K-way min-heap merge (`--merge`)
   - Google Chrome & Perfetto timeline visualizer export (`--chrome`)
-- **`ubpftrace-top`**:
+- **`ubt-top`**:
   - Interactive ANSI TUI dashboard
   - Automated cluster variance and straggler node detection
+  - Single-shot verification mode (`--once`)
   - Machine-readable streaming (`--json`) for Prometheus / Grafana
 
 ---
@@ -81,7 +87,7 @@ Six turnkey, production-validated tracing scripts:
 
 ### ⚙️ [6. Authoritative CLI & Environment Reference](cli_reference.md)
 Full parameter dictionary:
-- All CLI flags for `ubpftrace`, `ubpftrace-cat`, and `ubpftrace-top`
+- All CLI flags for `ubpftrace`, `ubt-attach`, `ubt-cat`, and `ubt-top`
 - Complete table of environment variables (`UBPFTRACE_OUTPUT_DIR`, `UBPFTRACE_LIVE_DIR`, `UBPFTRACE_STREAM`, etc.)
 
 ---
@@ -89,5 +95,6 @@ Full parameter dictionary:
 ### 🏛️ [7. Systems Architecture & Deep Internals](architecture_and_internals.md)
 Publication-grade systems treatise:
 - Lineage from eBPF, bpftrace, Score-P, and bpftime
+- Dynamic runtime injection & hot-patching architecture
 - Lock-free dual-epoch hazard double-buffering algorithm
-- Memory structures, struct alignments (`alignas(64)`), and binary layout of `.ubpf` containers
+- Memory structures, struct alignments (`alignas(64)`), and binary layout of `.ubt` containers

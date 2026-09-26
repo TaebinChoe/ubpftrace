@@ -55,10 +55,10 @@ Usage: ubpftrace [options] filename
 
 ---
 
-## 2. `ubpftrace-cat` CLI Reference
+## 2. `ubt-cat` CLI Reference (`ubpftrace-cat`)
 
 ```text
-Usage: ubpftrace-cat [OPTIONS] <file1.ubpf / dir> [file2.ubpf ...]
+Usage: ubt-cat [OPTIONS] <file1.ubt / dir> [file2.ubt ...]
 ```
 
 | Option | Argument | Description |
@@ -72,10 +72,10 @@ Usage: ubpftrace-cat [OPTIONS] <file1.ubpf / dir> [file2.ubpf ...]
 
 ---
 
-## 3. `ubpftrace-top` CLI Reference
+## 3. `ubt-top` CLI Reference (`ubpftrace-top`)
 
 ```text
-Usage: ubpftrace-top [options]
+Usage: ubt-top [options]
 ```
 
 | Option | Argument | Description |
@@ -89,13 +89,34 @@ Usage: ubpftrace-top [options]
 
 ---
 
-## 4. Environment Variables Dictionary
+## 4. `ubt-attach` CLI Reference
+
+```text
+Usage: ubt-attach [options]
+```
+
+Dynamic runtime injector and hot-patcher for single-PID, multi-process, and cluster-wide MPI applications.
+
+| Option | Argument | Description |
+| :--- | :--- | :--- |
+| `-p, --pid` | `PID` | Target a single running process ID on the local node |
+| `-c, --comm` | `NAME` | Target all local processes matching executable name on the current node |
+| `-s, --script` | `PATH` | Compile and inject specified `.bt` script directly into target processes |
+| `-j, --job, --jobid` | `JOBID` | Fan-out attach across all compute nodes in a Slurm job via `srun --overlap` |
+| `-w, --node` | `NODELIST` | Target specific remote compute node(s) |
+| `-d, --detach` | None | Send dynamic `detach` signal to unhook probes and restore 100% native execution |
+| `-a, --agent-so` | `PATH` | Custom path to `libbpftime-agent.so` (auto-discovered if omitted) |
+| `-h, --help` | None | Display usage help message and examples |
+
+---
+
+## 5. Environment Variables Dictionary
 
 All runtime options can also be configured via environment variables, which is especially convenient in multi-node Slurm job scripts:
 
 | Environment Variable | Equivalent CLI Option | Default Value | Description |
 | :--- | :--- | :--- | :--- |
-| `UBPFTRACE_OUTPUT_DIR` | `--output` directory | Current Directory | Directory where `.ubpf` containers and `_summary.json` are written |
+| `UBPFTRACE_OUTPUT_DIR` | `--output` directory | Current Directory | Directory where `.ubt` containers and `_summary.json` are written |
 | `UBPFTRACE_LIVE_DIR` | `--live-dir` | `<out_dir>/.ubpftrace_live_<jobid>` | Directory where periodic JSON snapshots are written |
 | `UBPFTRACE_LIVE_INTERVAL_SEC` | `-L <SEC>` | `0` (Disabled) | Snapshot export period in seconds |
 | `UBPFTRACE_LIVE_INTERVAL_MS` | `--live-ms <MS>` | `0` (Disabled) | Snapshot export period in milliseconds |

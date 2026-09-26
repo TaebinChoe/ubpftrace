@@ -765,10 +765,26 @@ static std::filesystem::path resolve_library_path_or_exit(
 				     b.c_str());
 			return b;
 		}
+		auto b2 = *build_root / "build" / "bpftime" / build_relative;
+		if (std::filesystem::exists(b2)) {
+			spdlog::info("Using {} from build tree: {}", what,
+				     b2.c_str());
+			return b2;
+		}
+	}
+	if (auto exe = current_exe_path(); exe) {
+		auto same_dir = exe->parent_path() / install_relative.filename();
+		if (std::filesystem::exists(same_dir)) {
+			spdlog::info("Using {} from exe dir: {}", what, same_dir.c_str());
+			return same_dir;
+		}
 	}
 	auto p = install_path / install_relative;
 	if (std::filesystem::exists(p))
 		return p;
+	auto p_flat = install_path / install_relative.filename();
+	if (std::filesystem::exists(p_flat))
+		return p_flat;
 	spdlog::error("Library not found for {}: {}", what, p.c_str());
 	std::exit(1);
 }

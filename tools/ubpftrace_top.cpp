@@ -24,7 +24,7 @@ void sig_handler(int) {
 }
 
 uint64_t get_now_ns() {
-    auto now = std::chrono::steady_clock::now();
+    auto now = std::chrono::system_clock::now();
     return std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
 }
 
@@ -83,10 +83,10 @@ int main(int argc, char *argv[]) {
             interval_sec = std::stod(argv[++i]);
         } else if (arg == "--json") {
             json_mode = true;
-        } else if (arg == "--once") {
+        } else if (arg == "--once" || arg == "-once" || arg == "-1" || arg == "--single") {
             run_once = true;
         } else if (arg == "-h" || arg == "--help") {
-            std::cout << "Usage: ubpftrace-top [options]\n\n"
+            std::cout << "Usage: ubt-top [options]\n\n"
                       << "Options:\n"
                       << "  -j, --job-id <ID>     Slurm Job ID to monitor\n"
                       << "  -d, --dir <PATH>      Directory containing live JSON snapshots\n"
@@ -99,34 +99,32 @@ int main(int argc, char *argv[]) {
     }
 
     if (snap_dir.empty()) {
+        std::string base_dir = ".";
+        if (const char *env_dir = std::getenv("UBPFTRACE_OUTPUT_DIR")) {
+            base_dir = env_dir;
+        } else if (std::filesystem::exists("/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces")) {
+            base_dir = "/pscratch/sd/s/sgkim/tchoe_home/FGCS/ubpftrace/traces";
+        } else if (std::filesystem::exists("/pscratch/sd/s/sgkim/tchoe_home/traces")) {
+            base_dir = "/pscratch/sd/s/sgkim/tchoe_home/traces";
+        }
+
         if (target_job_id > 0) {
-            if (const char *scratch = std::getenv("SCRATCH")) {
-                snap_dir = std::string(scratch) + "/.ubpftrace_live_" + std::to_string(target_job_id);
-            } else {
-                snap_dir = "./.ubpftrace_live_" + std::to_string(target_job_id);
+            snap_dir = base_dir + "/.ubpftrace_live_" + std::to_string(target_job_id);
+            if (!std::filesystem::exists(snap_dir)) {
+                std::string alt_snap = "./.ubpftrace_live_" + std::to_string(target_job_id);
+                if (std::filesystem::exists(alt_snap)) {
+                    snap_dir = alt_snap;
+                }
             }
         } else {
-            // Find most recent live directory in $SCRATCH or current directory
-            std::string search_root = ".";
-            if (const char *scratch = std::getenv("SCRATCH")) {
-                search_root = scratch;
-            }
-            try {
-                for (const auto &entry : std::filesystem::directory_iterator(search_root)) {
-                    if (entry.is_directory() && entry.path().filename().string().find(".ubpftrace_live_") == 0) {
-                        snap_dir = entry.path().string();
-                        break;
-                    }
-                }
-            } catch (...) {}
-            if (snap_dir.empty()) {
-                snap_dir = ".";
-            }
+            std::cerr << "Error: Must specify Slurm Job ID via -j <JOBID> or snapshot directory via -d <DIR>.\n\n";
+            std::cerr << "Usage: ubt-top -j <JOBID> [-i <interval_sec>]\n";
+            return 1;
         }
     }
 
     if (!json_mode) {
-        std::cout << "ubpftrace-top: Monitoring snapshot directory: " << snap_dir << std::endl;
+        std::cout << "ubt-top: Monitoring snapshot directory: " << snap_dir << std::endl;
     }
 
     uint64_t cycle = 0;
@@ -240,7 +238,7 @@ int main(int argc, char *argv[]) {
             // ANSI Dashboard
             std::cout << "\033[2J\033[H"; // Clear terminal and home cursor
             std::cout << "================================================================================" << std::endl;
-            std::cout << " ubpftrace-top :: Real-Time Cluster Aggregation Dashboard (Cycle #" << cycle << ")" << std::endl;
+            std::cout << " ubt-top :: Real-Time Cluster Aggregation Dashboard (Cycle #" << cycle << ")" << std::endl;
             std::cout << "================================================================================" << std::endl;
             std::cout << " Snapshot Dir : " << snap_dir << std::endl;
             std::cout << " Active Nodes : " << nodes.size() << " | Stragglers: "
@@ -294,17 +292,29 @@ int main(int argc, char *argv[]) {
                           << std::setw(15) << "Status" << std::endl;
                 std::cout << std::string(75, '-') << std::endl;
 
+                bool all_dormant = true;
                 for (const auto &node : nodes) {
                     double lag_ms = 0.0;
                     if (max_node_ts >= node.timestamp_ns) {
                         lag_ms = (max_node_ts - node.timestamp_ns) / 1e6;
                     }
+                    uint64_t age_sec = (now_ns > node.timestamp_ns) ? (now_ns - node.timestamp_ns) / 1000000000ULL : 0;
+                    std::string status_str;
+                    if (age_sec > 5) {
+                        status_str = "\033[1;33m[DORMANT]\033[0m";
+                    } else {
+                        all_dormant = false;
+                        status_str = (node.is_straggler ? "\033[1;31m[STRAGGLER]\033[0m" : "\033[1;32m[HEALTHY]\033[0m");
+                    }
                     std::cout << std::left << std::setw(10) << node.node_id
                               << std::setw(20) << node.nodename
                               << std::setw(10) << node.epoch
                               << std::setw(20) << std::fixed << std::setprecision(2) << lag_ms
-                              << (node.is_straggler ? "\033[1;31m[STRAGGLER]\033[0m" : "\033[1;32m[HEALTHY]\033[0m")
+                              << status_str
                               << std::endl;
+                }
+                if (all_dormant) {
+                    std::cout << "\n  \033[1;33m(Status: Snapshots are DORMANT / from previous run. Attach probes with ubt-attach to stream live telemetry)\033[0m" << std::endl;
                 }
             }
             std::cout << "\n[Press Ctrl+C to stop monitoring]" << std::endl;

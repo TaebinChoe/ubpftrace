@@ -92,9 +92,17 @@ class bpf_map_handler {
 
 	{
 		SPDLOG_DEBUG("Create map with type {}", type);
-		pthread_spin_init(&map_lock, 0);
+		pthread_spin_init(&map_lock, PTHREAD_PROCESS_SHARED);
 		this->id = id;
 		this->name = name;
+		this->attr = bpf_map_attr{
+			(int)type,
+			key_size,
+			value_size,
+			max_ents,
+			flags,
+			0, 0, 0, 0, 0, 0
+		};
 	}
 	bpf_map_handler(const bpf_map_handler &) = delete;
 	bpf_map_handler(bpf_map_handler &&other) noexcept
@@ -105,7 +113,7 @@ class bpf_map_handler {
 		  max_entries(other.max_entries), flags(other.flags),
 		  key_size(other.key_size), value_size(other.value_size)
 	{
-		pthread_spin_init(&map_lock, 0);
+		pthread_spin_init(&map_lock, PTHREAD_PROCESS_SHARED);
 		other.map_impl_ptr = nullptr;
 		other.map_refcnt_ptr = nullptr;
 	}
@@ -118,7 +126,7 @@ class bpf_map_handler {
 		type = other.type;
 		name = std::move(other.name);
 		id = other.id;
-		pthread_spin_init(&map_lock, 0);
+		pthread_spin_init(&map_lock, PTHREAD_PROCESS_SHARED);
 		map_impl_ptr = other.map_impl_ptr;
 		map_refcnt_ptr = other.map_refcnt_ptr;
 		max_entries = other.max_entries;

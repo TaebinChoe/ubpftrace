@@ -217,6 +217,7 @@ void ubpf_async_io_worker::swap_and_flush(bool force) {
                                  static_cast<uint32_t>(total_dropped),
                                  last_flush_ns_,
                                  now_ns);
+            writer_->flush();
         }
         last_flush_ns_ = now_ns;
     }

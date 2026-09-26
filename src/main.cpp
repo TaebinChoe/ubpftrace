@@ -958,15 +958,7 @@ uint64_t parse_pid(std::string const& pid_str)
 int main(int argc, char* argv[])
 {
   if (!getenv("BPFTIME_GLOBAL_SHM_NAME")) {
-    std::string shm_name = "bpftime_maps_shm_" + std::to_string(getpid());
-    const char *procid = getenv("SLURM_PROCID");
-    if (!procid) procid = getenv("PMI_RANK");
-    if (!procid) procid = getenv("OMPI_COMM_WORLD_RANK");
-    if (procid) {
-      const char *jobid = getenv("SLURM_JOB_ID");
-      std::string jid = jobid ? jobid : "0";
-      shm_name = "bpftime_maps_shm_" + jid + "_" + procid;
-    }
+    std::string shm_name = "bpftime_maps_shm";
     setenv("BPFTIME_GLOBAL_SHM_NAME", shm_name.c_str(), 1);
   }
 

@@ -211,22 +211,23 @@ $kb  = (uint64)arg0 / 1024;
 
 ---
 
-## 7. The Three Operational Telemetry Paradigms
+## 7. Operational Telemetry & Dynamic Injection Paradigms
 
-Depending on your profiling goal, choose one of the three execution paradigms:
+Depending on your profiling goal, choose one of the four execution paradigms:
 
 ```mermaid
 flowchart TD
     Start["Choose Telemetry Paradigm"] --> P1["1. In-Band Streaming<br><i>Human-readable terminal logs</i>"]
     Start --> P2["2. Post-Run Time Bucketing (Scenario B)<br><i>Zero-jitter production HPC profiling</i>"]
     Start --> P3["3. Periodic JSON Snapshots (Scenario A)<br><i>Live cluster monitoring & TUI</i>"]
+    Start --> P4["4. Dynamic Runtime Injection<br><i>Zero-restart attachment (ubt-attach)</i>"]
 ```
 
 ### Paradigm 1: In-Band Script Streaming
 - **Best for**: Single-process interactive terminal debugging.
 - **How to run**:
   ```bash
-  ubpftrace --stream -c "./simple" trace_stream.bt
+  ./bin/ubpftrace --stream -c "./simple" trace_stream.bt
   ```
 
 ### Paradigm 2: Post-Run Time-Bucketed Aggregation (Scenario B)
@@ -240,7 +241,7 @@ flowchart TD
   ```
 - **How to run**:
   ```bash
-  ubpftrace -c "./simple" trace_postrun.bt
+  ./bin/ubpftrace -c "./simple" trace_postrun.bt
   ```
 
 ### Paradigm 3: Out-of-Band Periodic JSON Snapshots (Scenario A)
@@ -249,8 +250,25 @@ flowchart TD
 - **How to run**:
   ```bash
   # Tracing Process
-  ubpftrace -L 1 --live-dir ./snapshots -c "./simple" trace_live.bt
+  ./bin/ubpftrace -L 1 --live-dir ./snapshots -c "./simple" trace_live.bt
 
   # Dashboard (in 2nd terminal)
-  ubpftrace-top --dir ./snapshots
+  ./bin/ubt-top --dir ./snapshots
+  ```
+
+### Paradigm 4: Dynamic Runtime Injection & Hot-Patching (`ubt-attach`)
+- **Best for**: Attaching to long-running MPI simulations without restarting or modifying binaries.
+- **How to run**:
+  ```bash
+  # Attach dynamically to running job across all nodes:
+  ./bin/ubt-attach --job 58893883 --comm hpc_app -s ./examples/apps/trace_hpc.bt
+
+  # Monitor online:
+  ./bin/ubt-top -j 58893883
+
+  # Hot-patch with updated script:
+  ./bin/ubt-attach --job 58893883 --comm hpc_app -s ./examples/apps/trace_hpc.bt
+
+  # Detach cleanly at 0 overhead:
+  ./bin/ubt-attach --job 58893883 --comm hpc_app -d
   ```

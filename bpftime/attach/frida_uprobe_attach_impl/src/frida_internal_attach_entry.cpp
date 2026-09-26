@@ -116,30 +116,30 @@ void frida_internal_attach_entry::ensure_listener(int attach_type)
 {
 	if (attach_type != ATTACH_UPROBE && attach_type != ATTACH_URETPROBE)
 		return;
-	auto **slot = attach_type == ATTACH_UPROBE ? &uprobe_listener :
-						     &uretprobe_listener;
-	if (*slot != nullptr)
+	if (listener != nullptr)
 		return;
-	*slot = attach_type == ATTACH_UPROBE ?
-			gum_make_probe_listener(uprobe_listener_on_enter, this,
-						nullptr) :
-			gum_make_call_listener(nullptr, uprobe_listener_on_leave,
-					       this, nullptr);
-	if (*slot == nullptr)
+	listener = gum_make_call_listener(uprobe_listener_on_enter,
+					  uprobe_listener_on_leave,
+					  this, nullptr);
+	if (listener == nullptr)
 		throw std::runtime_error("Unable to create Frida listener");
 	gum_interceptor_begin_transaction(interceptor);
-	if (int err = gum_interceptor_attach(interceptor, function, *slot,
-					     nullptr);
-	    err < 0) {
+	int err = gum_interceptor_attach(interceptor, function, listener,
+					 nullptr);
+	gum_interceptor_end_transaction(interceptor);
+	if (err < 0) {
+		if (err == GUM_ATTACH_ALREADY_ATTACHED) {
+			SPDLOG_WARN("gum_interceptor_attach: function {:x} already attached, proceeding",
+				    (uintptr_t)function);
+			return;
+		}
 		auto message = build_frida_attach_failure_message(
 			"gum_interceptor_attach", function, attach_type, err);
-		g_object_unref(*slot);
-		*slot = nullptr;
-		gum_interceptor_end_transaction(interceptor);
+		g_object_unref(listener);
+		listener = nullptr;
 		SPDLOG_ERROR("{}", message);
 		throw std::runtime_error(message);
 	}
-	gum_interceptor_end_transaction(interceptor);
 }
 
 frida_internal_attach_entry::frida_internal_attach_entry(
@@ -179,26 +179,64 @@ frida_internal_attach_entry::frida_internal_attach_entry(
 	this->interceptor = gum_object_ref(interceptor);
 }
 
+void frida_internal_attach_entry::detach_listener()
+{
+	SPDLOG_DEBUG("Detach listener at {:x}", (uintptr_t)function);
+	gum_interceptor_begin_transaction(interceptor);
+	if (listener != nullptr) {
+		gum_interceptor_detach(interceptor, listener);
+	}
+	if (override_return_callback != nullptr) {
+		gum_interceptor_revert(interceptor, function);
+		override_return_callback = nullptr;
+	}
+	gum_interceptor_end_transaction(interceptor);
+	if (listener != nullptr) {
+		g_object_unref(listener);
+		listener = nullptr;
+	}
+}
+
 frida_internal_attach_entry::~frida_internal_attach_entry()
 {
 	SPDLOG_DEBUG("Destroy internal attach at {:x}", (uintptr_t)function);
-	for (auto *listener : { uprobe_listener, uretprobe_listener }) {
-		if (listener != nullptr) {
-			gum_interceptor_detach(interceptor, listener);
-			g_object_unref(listener);
-		}
-	}
-	if (!uprobe_listener && !uretprobe_listener) {
-		gum_interceptor_revert(interceptor, function);
-		SPDLOG_DEBUG("Reverted function replace");
-	}
+	detach_listener();
 	gum_object_unref(interceptor);
 	SPDLOG_DEBUG("Destructor of frida_internal_attach_entry exiting..");
 }
 
+void frida_internal_attach_entry::add_user_attach(frida_attach_entry *entry)
+{
+	std::lock_guard<std::mutex> lock(attaches_mutex);
+	auto curr = user_attaches ? *user_attaches : std::vector<frida_attach_entry *>();
+	curr.push_back(entry);
+	std::atomic_store(&user_attaches,
+			  std::make_shared<const std::vector<frida_attach_entry *>>(std::move(curr)));
+}
+
+void frida_internal_attach_entry::remove_user_attach(frida_attach_entry *entry)
+{
+	std::lock_guard<std::mutex> lock(attaches_mutex);
+	if (!user_attaches) return;
+	auto curr = *user_attaches;
+	auto tail = std::remove_if(curr.begin(), curr.end(),
+				   [entry](const auto &v) { return v == entry; });
+	curr.resize(tail - curr.begin());
+	std::atomic_store(&user_attaches,
+			  std::make_shared<const std::vector<frida_attach_entry *>>(std::move(curr)));
+}
+
+bool frida_internal_attach_entry::empty_user_attaches() const
+{
+	auto attaches = std::atomic_load(&user_attaches);
+	return !attaches || attaches->empty();
+}
+
 bool frida_internal_attach_entry::has_override() const
 {
-	for (auto v : user_attaches) {
+	auto attaches = std::atomic_load(&user_attaches);
+	if (!attaches) return false;
+	for (auto v : *attaches) {
 		if (v->get_type() == ATTACH_UPROBE_OVERRIDE) {
 			return true;
 		}
@@ -208,7 +246,9 @@ bool frida_internal_attach_entry::has_override() const
 
 bool frida_internal_attach_entry::has_uprobe_or_uretprobe() const
 {
-	for (auto v : user_attaches) {
+	auto attaches = std::atomic_load(&user_attaches);
+	if (!attaches) return false;
+	for (auto v : *attaches) {
 		if (v->get_type() == ATTACH_UPROBE ||
 		    v->get_type() == ATTACH_URETPROBE) {
 			return true;
@@ -219,11 +259,13 @@ bool frida_internal_attach_entry::has_uprobe_or_uretprobe() const
 
 void frida_internal_attach_entry::run_filter_callback(const pt_regs &regs) const
 {
-	for (auto v : user_attaches) {
-		if (v->get_type() == ATTACH_UPROBE_OVERRIDE) {
-			v->run_callback<ATTACH_UPROBE_OVERRIDE_INDEX>(regs);
-			// There should be at most one filter attach..
-			return;
+	auto attaches = std::atomic_load(&user_attaches);
+	if (attaches) {
+		for (auto v : *attaches) {
+			if (v->get_type() == ATTACH_UPROBE_OVERRIDE) {
+				v->run_callback<ATTACH_UPROBE_OVERRIDE_INDEX>(regs);
+				return;
+			}
 		}
 	}
 	SPDLOG_ERROR(
@@ -235,7 +277,11 @@ void frida_internal_attach_entry::run_filter_callback(const pt_regs &regs) const
 void frida_internal_attach_entry::iterate_uprobe_callbacks(
 	const pt_regs &regs) const
 {
-	for (auto v : user_attaches) {
+	auto attaches = std::atomic_load(&user_attaches);
+	SPDLOG_INFO("[HOOK] iterate_uprobe_callbacks called! attaches={}", attaches ? attaches->size() : 0);
+	if (!attaches) return;
+	for (auto v : *attaches) {
+		SPDLOG_INFO("[HOOK] running user attach type {}", v->get_type());
 		if (v->get_type() == ATTACH_UPROBE) {
 			v->run_callback<ATTACH_UPROBE_INDEX>(regs);
 		}
@@ -245,7 +291,9 @@ void frida_internal_attach_entry::iterate_uprobe_callbacks(
 void frida_internal_attach_entry::iterate_uretprobe_callbacks(
 	const pt_regs &regs) const
 {
-	for (auto v : user_attaches) {
+	auto attaches = std::atomic_load(&user_attaches);
+	if (!attaches) return;
+	for (auto v : *attaches) {
 		if (v->get_type() == ATTACH_URETPROBE) {
 			v->run_callback<ATTACH_URETPROBE_INDEX>(regs);
 		}
@@ -294,7 +342,7 @@ static void uprobe_listener_on_enter(GumInvocationContext *ctx,
 				     gpointer user_data)
 {
 	auto *hook_entry = static_cast<frida_internal_attach_entry *>(user_data);
-	SPDLOG_TRACE("Handle uprobe at uprobe_listener_on_enter");
+	SPDLOG_INFO("[HOOK] uprobe_listener_on_enter triggered for func {:x}!", (uintptr_t)hook_entry->function);
 	bpftime::pt_regs regs;
 	convert_gum_cpu_context_to_pt_regs(*ctx->cpu_context, regs);
 

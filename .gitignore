@@ -102,4 +102,11 @@ examples/apps/omp_app
 examples/apps/puts_app
 examples/apps/struct_app
 examples/apps/libnccl.so
+examples/getting_started/target_app
+tests/mre_target
+tests/mre_standalone/injector
+tests/mre_standalone/libmre_agent.so
+tests/mre_standalone/target
+traces/
 *.dat
+

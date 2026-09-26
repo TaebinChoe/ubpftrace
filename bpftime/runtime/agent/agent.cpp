@@ -440,7 +440,6 @@ static int perform_detach()
 	}
 	SPDLOG_DEBUG("Detaching done");
 	bpftime::hpc::ubpf_live_exporter::set_map_snapshot_provider(nullptr);
-	bpftime::hpc::ubpf_agent_manager::instance().shutdown();
 	bpftime_logger_flush();
 	return detach_err < 0 ? detach_err : 0;
 }
@@ -665,6 +664,154 @@ static bool parse_force_reinit(const gchar *data)
 	return false;
 }
 
+static void register_map_snapshot_provider()
+{
+	bpftime::hpc::ubpf_live_exporter::set_map_snapshot_provider([]() -> nlohmann::json {
+		nlohmann::json maps_json = nlohmann::json::object();
+		const handler_manager *mgr = shm_holder.global_shared_memory.get_manager();
+		if (!mgr) {
+			fprintf(stderr, "[BPFTIME-DEBUG pid %d] map provider: mgr is NULL\n", (int)getpid());
+			return maps_json;
+		}
+		for (std::size_t i = 0; i < mgr->size(); ++i) {
+			if (!mgr->is_allocated(i)) continue;
+			const auto &handler = mgr->get_handler(i);
+			if (std::holds_alternative<bpf_map_handler>(handler)) {
+				std::string raw_name = "map_" + std::to_string(i);
+				try {
+					const auto &map = std::get<bpf_map_handler>(handler);
+					uint32_t key_sz = map.get_key_size();
+					uint32_t val_sz = map.get_value_size();
+					uint32_t max_ent = map.get_max_entries();
+					if (key_sz == 0 || val_sz == 0 || max_ent == 0) continue;
+					if (map.type == bpf_map_type::BPF_MAP_TYPE_RINGBUF ||
+					    map.type == bpf_map_type::BPF_MAP_TYPE_PERF_EVENT_ARRAY ||
+					    map.type == bpf_map_type::BPF_MAP_TYPE_PROG_ARRAY) continue;
+
+					if (!map.name.empty()) raw_name = std::string(map.name.c_str());
+					if (raw_name.find(".rodata") != std::string::npos ||
+					    raw_name.find(".data") != std::string::npos ||
+					    raw_name.find(".bss") != std::string::npos) continue;
+
+					std::string map_name = raw_name;
+					if (map_name.rfind("AT_", 0) == 0) {
+						map_name = "@" + map_name.substr(3);
+					}
+
+					nlohmann::json map_obj = nlohmann::json::object();
+					map_obj["type"] = (uint32_t)map.type;
+					map_obj["key_size"] = key_sz;
+					map_obj["value_size"] = val_sz;
+					map_obj["max_entries"] = max_ent;
+					nlohmann::json entries = nlohmann::json::object();
+
+					bool is_percpu = (map.type == bpf_map_type::BPF_MAP_TYPE_PERCPU_HASH ||
+					                  map.type == bpf_map_type::BPF_MAP_TYPE_PERCPU_ARRAY ||
+					                  map.type == bpf_map_type::BPF_MAP_TYPE_LRU_PERCPU_HASH);
+					int ncpu = is_percpu ? sysconf(_SC_NPROCESSORS_ONLN) : 1;
+					if (ncpu <= 0) ncpu = 1;
+
+					if (auto array_opt = map.try_get_array_map_impl()) {
+						auto *arr = *array_opt;
+						for (uint32_t idx = 0; idx < max_ent; ++idx) {
+							const void *elem = arr->elem_lookup(&idx);
+							if (elem) {
+								if (val_sz >= sizeof(uint64_t)) {
+									uint64_t val = *reinterpret_cast<const uint64_t *>(elem);
+									if (val != 0) entries[std::to_string(idx)] = val;
+								} else if (val_sz == sizeof(uint32_t)) {
+									uint32_t val = *reinterpret_cast<const uint32_t *>(elem);
+									if (val != 0) entries[std::to_string(idx)] = val;
+								}
+							}
+						}
+					} else if (map.type == bpf_map_type::BPF_MAP_TYPE_PERCPU_ARRAY) {
+						for (uint32_t idx = 0; idx < max_ent; ++idx) {
+							const void *elem = map.map_lookup_elem(&idx, true);
+							if (elem) {
+								if (val_sz >= sizeof(uint64_t)) {
+									const uint64_t *p64 = reinterpret_cast<const uint64_t *>(elem);
+									uint64_t total_val = 0;
+									size_t stride = val_sz / sizeof(uint64_t);
+									for (int c = 0; c < ncpu; ++c) total_val += p64[c * stride];
+									if (total_val != 0) entries[std::to_string(idx)] = total_val;
+								} else if (val_sz == sizeof(uint32_t)) {
+									const uint32_t *p32 = reinterpret_cast<const uint32_t *>(elem);
+									uint32_t total_val = 0;
+									for (int c = 0; c < ncpu; ++c) total_val += p32[c];
+									if (total_val != 0) entries[std::to_string(idx)] = total_val;
+								}
+							}
+						}
+					} else {
+						std::vector<uint8_t> cur_key(key_sz, 0);
+						std::vector<uint8_t> next_key(key_sz, 0);
+						const void *p_cur = nullptr;
+						size_t count = 0;
+						while (count < max_ent && map.bpf_map_get_next_key(p_cur, next_key.data(), true) == 0) {
+							const void *val_ptr = map.map_lookup_elem(next_key.data(), true);
+							if (val_ptr) {
+								std::string key_str;
+								if (key_sz == sizeof(uint64_t)) {
+									key_str = std::to_string(*reinterpret_cast<const uint64_t *>(next_key.data()));
+								} else if (key_sz == sizeof(uint32_t)) {
+									key_str = std::to_string(*reinterpret_cast<const uint32_t *>(next_key.data()));
+								} else {
+									char hex_buf[64];
+									snprintf(hex_buf, sizeof(hex_buf), "k_%zu", count);
+									key_str = hex_buf;
+								}
+								if (is_percpu) {
+									if (val_sz >= sizeof(uint64_t)) {
+										const uint64_t *p64 = reinterpret_cast<const uint64_t *>(val_ptr);
+										uint64_t total_val = 0;
+										size_t stride = val_sz / sizeof(uint64_t);
+										for (int c = 0; c < ncpu; ++c) total_val += p64[c * stride];
+										entries[key_str] = total_val;
+									} else if (val_sz == sizeof(uint32_t)) {
+										const uint32_t *p32 = reinterpret_cast<const uint32_t *>(val_ptr);
+										uint32_t total_val = 0;
+										for (int c = 0; c < ncpu; ++c) total_val += p32[c];
+										entries[key_str] = total_val;
+									} else {
+										entries[key_str] = 1;
+									}
+								} else {
+									if (val_sz >= sizeof(uint64_t)) {
+										entries[key_str] = *reinterpret_cast<const uint64_t *>(val_ptr);
+									} else if (val_sz == sizeof(uint32_t)) {
+										entries[key_str] = *reinterpret_cast<const uint32_t *>(val_ptr);
+									} else {
+										entries[key_str] = 1;
+									}
+								}
+							}
+							cur_key = next_key;
+							p_cur = cur_key.data();
+							count++;
+						}
+					}
+					if (!entries.empty()) {
+						map_obj["entries"] = entries;
+						maps_json[map_name] = map_obj;
+						SPDLOG_INFO("[SNAPSHOT] Map {} captured with {} entries", map_name, entries.size());
+					} else {
+						SPDLOG_INFO("[SNAPSHOT] Map {} had 0 non-zero entries", map_name);
+					}
+				} catch (const std::exception &e) {
+					fprintf(stderr, "[AGENT-DEBUG pid %d] map provider: exception on handler %zu (%s): %s\n",
+						(int)getpid(), i, raw_name.c_str(), e.what());
+				} catch (...) {
+					fprintf(stderr, "[AGENT-DEBUG pid %d] map provider: unknown exception on handler %zu (%s)\n",
+						(int)getpid(), i, raw_name.c_str());
+				}
+			}
+		}
+		return maps_json;
+	});
+	bpftime::hpc::ubpf_agent_manager::instance().init();
+}
+
 static int refresh_attach_session(const gchar *data)
 {
 	if (__atomic_load_n(&initialized, __ATOMIC_SEQ_CST) != AGENT_READY) {
@@ -687,8 +834,14 @@ static int refresh_attach_session(const gchar *data)
 	(void)ctx_holder.ctx.destroy_all_attach_links();
 	ctx_holder.ctx.reset_instantiated_state();
 
+	bpftime_destroy_global_shm();
+	bpftime_initialize_global_shm(bpftime::shm_open_type::SHM_OPEN_ONLY);
+
+	auto r_cfg = construct_runtime_config_from_env();
 	int res =
-		ctx_holder.ctx.init_attach_ctx_from_handlers(bpftime_get_runtime_config());
+		ctx_holder.ctx.init_attach_ctx_from_handlers(r_cfg);
+	fprintf(stderr, "[AGENT-DEBUG pid %d] refresh_attach_session: init_attach_ctx res=%d, mgr=%p\n",
+		(int)getpid(), res, shm_holder.global_shared_memory.get_manager());
 	if (res != 0) {
 		SPDLOG_ERROR(
 			"agent_control: init_attach_ctx_from_handlers failed: {}",
@@ -702,6 +855,8 @@ static int refresh_attach_session(const gchar *data)
 		ctx_holder.ctx.reset_instantiated_state();
 		return -EAGAIN;
 	}
+
+	register_map_snapshot_provider();
 
 	int auto_refresh_ms = parse_auto_refresh_ms(data);
 	pid_t loader_pid = parse_loader_pid(data);
@@ -927,7 +1082,7 @@ extern "C" void bpftime_agent_main(const gchar *data, gboolean *stay_resident)
 						std::make_unique<shm_lifecycle_lock>(
 							get_global_shm_name());
 					bpftime_initialize_global_shm(
-						shm_open_type::SHM_OPEN_ONLY);
+						shm_open_type::SHM_CREATE_OR_OPEN);
 					shm_ok = true;
 					break;
 				} catch (const std::exception &ex) {
@@ -1045,86 +1200,7 @@ extern "C" void bpftime_agent_main(const gchar *data, gboolean *stay_resident)
 				return;
 			}
 			srand(std::random_device()());
-			bpftime::hpc::ubpf_live_exporter::set_map_snapshot_provider([]() -> nlohmann::json {
-				nlohmann::json maps_json = nlohmann::json::object();
-				const handler_manager *mgr = shm_holder.global_shared_memory.get_manager();
-				if (!mgr) return maps_json;
-				for (std::size_t i = 0; i < mgr->size(); ++i) {
-					if (!mgr->is_allocated(i)) continue;
-					const auto &handler = mgr->get_handler(i);
-					if (std::holds_alternative<bpf_map_handler>(handler)) {
-						const auto &map = std::get<bpf_map_handler>(handler);
-						std::string map_name = map.name.empty() ? ("map_" + std::to_string(i)) : map.name;
-						nlohmann::json map_obj = nlohmann::json::object();
-						map_obj["type"] = map.attr.type;
-						map_obj["key_size"] = map.attr.key_size;
-						map_obj["value_size"] = map.attr.value_size;
-						map_obj["max_entries"] = map.attr.max_ents;
-						nlohmann::json entries = nlohmann::json::object();
-
-						bool is_percpu = (map.attr.type == (uint32_t)bpf_map_type::BPF_MAP_TYPE_PERCPU_HASH ||
-						                  map.attr.type == (uint32_t)bpf_map_type::BPF_MAP_TYPE_PERCPU_ARRAY);
-						int ncpu = is_percpu ? sysconf(_SC_NPROCESSORS_ONLN) : 1;
-						if (ncpu <= 0) ncpu = 1;
-
-						if (auto array_opt = map.try_get_array_map_impl()) {
-							auto *arr = *array_opt;
-							for (uint32_t idx = 0; idx < map.attr.max_ents; ++idx) {
-								const void *elem = arr->elem_lookup(&idx);
-								if (elem) {
-									if (map.attr.value_size == sizeof(uint64_t)) {
-										uint64_t val = *reinterpret_cast<const uint64_t *>(elem);
-										if (val != 0) entries[std::to_string(idx)] = val;
-									} else if (map.attr.value_size == sizeof(uint32_t)) {
-										uint32_t val = *reinterpret_cast<const uint32_t *>(elem);
-										if (val != 0) entries[std::to_string(idx)] = val;
-									}
-								}
-							}
-						} else {
-							std::vector<uint8_t> cur_key(map.attr.key_size, 0);
-							std::vector<uint8_t> next_key(map.attr.key_size, 0);
-							const void *p_cur = nullptr;
-							size_t count = 0;
-							while (count < map.attr.max_ents && map.bpf_map_get_next_key(p_cur, next_key.data(), true) == 0) {
-								const void *val_ptr = map.map_lookup_elem(next_key.data(), true);
-								if (val_ptr) {
-									std::string key_str;
-									if (map.attr.key_size == sizeof(uint64_t)) {
-										key_str = std::to_string(*reinterpret_cast<const uint64_t *>(next_key.data()));
-									} else if (map.attr.key_size == sizeof(uint32_t)) {
-										key_str = std::to_string(*reinterpret_cast<const uint32_t *>(next_key.data()));
-									} else {
-										char hex_buf[64];
-										snprintf(hex_buf, sizeof(hex_buf), "k_%zu", count);
-										key_str = hex_buf;
-									}
-									if (map.attr.value_size == sizeof(uint64_t)) {
-										const uint64_t *p64 = reinterpret_cast<const uint64_t *>(val_ptr);
-										uint64_t total_val = 0;
-										for (int c = 0; c < ncpu; ++c) total_val += p64[c];
-										entries[key_str] = total_val;
-									} else if (map.attr.value_size == sizeof(uint32_t)) {
-										const uint32_t *p32 = reinterpret_cast<const uint32_t *>(val_ptr);
-										uint32_t total_val = 0;
-										for (int c = 0; c < ncpu; ++c) total_val += p32[c];
-										entries[key_str] = total_val;
-									} else {
-										entries[key_str] = 1;
-									}
-								}
-								cur_key = next_key;
-								p_cur = cur_key.data();
-								count++;
-							}
-						}
-						map_obj["entries"] = entries;
-						maps_json[map_name] = map_obj;
-					}
-				}
-				return maps_json;
-			});
-			bpftime::hpc::ubpf_agent_manager::instance().init();
+			register_map_snapshot_provider();
 
 			int auto_refresh_ms = parse_auto_refresh_ms(data);
 			pid_t loader_pid = parse_loader_pid(data);

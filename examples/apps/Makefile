@@ -45,8 +45,10 @@ mpi_p2p_app: mpi_p2p_app.c
 hpc_app: hpc_app.c
 	@if [ -n "$(MPICC)" ] && $(MPICC) $(CFLAGS) -o $@ $< 2>/dev/null; then \
 		echo "Built hpc_app successfully with $(MPICC)"; \
+	elif [ -n "$(MPICC)" ] && $(MPICC) $(CFLAGS) -o $@ $< -L/opt/cray/libfabric/2.3.1/lib64 -Wl,-rpath,/opt/cray/libfabric/2.3.1/lib64 -lfabric 2>/dev/null; then \
+		echo "Built hpc_app successfully with Cray MPICH & Libfabric 2.3.1"; \
 	elif [ -n "$(MPICC)" ] && $(MPICC) $(CFLAGS) -o $@ $< -L/opt/cray/libfabric/1.22.0/lib64 -Wl,-rpath,/opt/cray/libfabric/1.22.0/lib64 -lfabric 2>/dev/null; then \
-		echo "Built hpc_app successfully with Cray MPICH & Libfabric"; \
+		echo "Built hpc_app successfully with Cray MPICH & Libfabric 1.22.0"; \
 	else \
 		rm -f $@; \
 		echo "Notice: MPI compiler not found or libraries not linked; skipping hpc_app build."; \

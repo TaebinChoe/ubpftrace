@@ -450,6 +450,11 @@ uint64_t bpf_ringbuf_output(uint64_t rb, uint64_t data, uint64_t size,
 	}
 	memcpy(buf, (const void *)(uintptr_t)data, size);
 	bpftime_ringbuf_submit(fd, buf, false);
+
+	// Forward event to HPC wait-free SHM container stream
+	bpftime::hpc::ubpf_agent_manager::instance().log_event(
+		1, (const void *)(uintptr_t)data, static_cast<uint32_t>(size));
+
 	return 0;
 }
 
@@ -546,6 +551,11 @@ uint64_t bpf_perf_event_output(uint64_t ctx, uint64_t map, uint64_t flags,
 		SPDLOG_ERROR(
 			"Attempting to run perf_output on a non-perf array map");
 		ret = -1;
+	}
+
+	if (ret >= 0) {
+		bpftime::hpc::ubpf_agent_manager::instance().log_event(
+			1, (const void *)(uintptr_t)data, static_cast<uint32_t>(size));
 	}
 
 	sched_setaffinity(0, sizeof(orig), &orig);

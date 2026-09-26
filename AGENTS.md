@@ -1,29 +1,31 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides context for AI agents when working on the bpftrace codebase.
+This file provides context for AI agents when working on the `ubpftrace` codebase.
 
 ## Project overview
 
-bpftrace is a high-level tracing language for Linux eBPF. It uses LLVM as a
-compiler backend to generate BPF bytecode, and libbpf/bcc for kernel
-interaction. The language prioritizes conciseness, readability, and
-clean abstraction over eBPF complexity. Written in C++20.
+`ubpftrace` is an unprivileged, zero-jitter userspace eBPF dynamic tracing engine designed for High-Performance Computing (HPC), Distributed AI, and Parallel Storage Systems. It uses LLVM as a compiler backend to generate BPF bytecode, and executes entirely in userspace using `bpftime` with Frida-Gum dynamic binary rewriting trampolines.
+
+The toolkit includes:
+- **`bin/ubpftrace`**: Compiler frontend and userspace runtime engine.
+- **`bin/ubt-attach`**: Dynamic multi-node runtime injector and live probe hot-patcher for unmodified running processes.
+- **`bin/ubt-top`**: Real-time ANSI TUI cluster monitoring dashboard.
+- **`bin/ubt-cat`**: High-speed out-of-band trace container reader, merger, and Perfetto/Chrome timeline exporter.
 
 ## Build
 
-See [docs/developers.md](docs/developers.md#building) for full build
-instructions. Before running any tests, verify the `build/` directory and
-test binaries exist. If they don't, build first.
+See [docs/getting_started.md](docs/getting_started.md) and [docs/developers.md](docs/developers.md#building) for full build instructions.
 
-Quick reference (Nix, preferred):
+Quick reference (Single-step HPC build):
 
+```bash
+./scripts/build_hpc.sh
+# or via cmake:
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ```
-nix develop          # enter dev shell
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
-make -C build -j$(nproc)
-```
 
-The built binary is at `build/src/bpftrace`.
+The compiled binaries are placed in `bin/` (`ubpftrace`, `ubt-attach`, `ubt-top`, `ubt-cat`, `libbpftime-agent.so`, `libbpftime-syscall-server.so`).
 
 ## Tests
 
